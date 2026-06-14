@@ -1,64 +1,89 @@
-const docgen = require('react-docgen-typescript');
-const fs = require('fs');
-const path = require('path');
+const docgen = require("react-docgen-typescript");
+const fs = require("fs");
+const path = require("path");
+const { Project } = require("ts-morph");
 
-// 🎯 配置你共享组件库的根目录
-const UI_DIR = path.resolve(__dirname, '../../../../src/components/shared-ui');
-const SPEC_OUTPUT = path.resolve(__dirname, '../.ui-spec.json');
-const MD_OUTPUT = path.resolve(__dirname, '../COMPONENTS.md');
+// =====================
+// CONFIG
+// =====================
+const UI_DIR = path.resolve(__dirname, "../../../../src/components/shared-ui");
+const SPEC_OUTPUT = path.resolve(__dirname, "../.ui-spec.json");
+const MD_OUTPUT = path.resolve(__dirname, "../COMPONENTS.md");
 
-// 1. 递归获取目录下所有的 .tsx 文件
+// =====================
+// TS-MORPH PROJECT
+// =====================
+const project = new Project({
+    tsConfigFilePath: path.resolve(__dirname, "../../../../tsconfig.json"),
+});
+
+// =====================
+// FILE SCAN
+// =====================
 function getFilesRecursively(dir) {
     let results = [];
     if (!fs.existsSync(dir)) return results;
+
     const list = fs.readdirSync(dir);
-    list.forEach((file) => {
+    for (const file of list) {
         const fullPath = path.join(dir, file);
         const stat = fs.statSync(fullPath);
-        if (stat && stat.isDirectory()) {
+
+        if (stat.isDirectory()) {
             results = results.concat(getFilesRecursively(fullPath));
-        } else if (file.endsWith('.tsx') && !file.includes('.test.') && !file.includes('.spec.')) {
+        } else if (
+            file.endsWith(".tsx") &&
+            !file.includes(".test.") &&
+            !file.includes(".spec.")
+        ) {
             results.push(fullPath);
         }
-    });
+    }
     return results;
 }
 
-// 2. 物理切片提取头部 JSDoc (100% 稳定拿到 @description 和 @example)
+// =====================
+// JSDOC PARSER (your original)
+// =====================
 function getJSDocByPhysicalSlice(filePath) {
     const result = { description: "", examples: [] };
-    const code = fs.readFileSync(filePath, 'utf-8');
+    const code = fs.readFileSync(filePath, "utf-8");
 
-    // 匹配紧贴着 interface/type/export 的 /** ... */ 注释
-    const commentMatch = code.match(/\/\*\*([\s\S]*?)\*\/\s*(interface|type|export\s+(const|function|default))/);
+    const commentMatch = code.match(
+        /\/\*\*([\s\S]*?)\*\/\s*(interface|type|export\s+(const|function|default))/
+    );
+
     if (!commentMatch) return result;
 
-    const lines = commentMatch[1].split('\n');
+    const lines = commentMatch[1].split("\n");
+
     let currentExample = [];
     let isInsideExample = false;
 
     for (let line of lines) {
-        let trimmed = line.replace(/^\s*\*\s*/, '').trim();
+        let trimmed = line.replace(/^\s*\*\s*/, "").trim();
 
-        if (trimmed.startsWith('@description')) {
+        if (trimmed.startsWith("@description")) {
             isInsideExample = false;
-            result.description = trimmed.replace('@description', '').trim();
+            result.description = trimmed.replace("@description", "").trim();
             continue;
         }
-        if (trimmed.startsWith('@example')) {
-            if (currentExample.length > 0) {
-                result.examples.push(currentExample.join('\n'));
+
+        if (trimmed.startsWith("@example")) {
+            if (currentExample.length) {
+                result.examples.push(currentExample.join("\n"));
                 currentExample = [];
             }
             isInsideExample = true;
-            let remain = trimmed.replace('@example', '').trim();
+            let remain = trimmed.replace("@example", "").trim();
             if (remain) currentExample.push(remain);
             continue;
         }
-        if (trimmed.startsWith('@')) {
+
+        if (trimmed.startsWith("@")) {
             isInsideExample = false;
-            if (currentExample.length > 0) {
-                result.examples.push(currentExample.join('\n'));
+            if (currentExample.length) {
+                result.examples.push(currentExample.join("\n"));
                 currentExample = [];
             }
             continue;
@@ -66,68 +91,153 @@ function getJSDocByPhysicalSlice(filePath) {
 
         if (isInsideExample) {
             currentExample.push(trimmed);
-        } else if (!result.description && trimmed && !trimmed.startsWith('@component')) {
+        } else if (!result.description && trimmed) {
             result.description = trimmed;
         }
     }
 
-    if (currentExample.length > 0) {
-        result.examples.push(currentExample.join('\n'));
+    if (currentExample.length) {
+        result.examples.push(currentExample.join("\n"));
     }
+
     return result;
 }
 
-// 执行扫描与解析
-const componentFiles = getFilesRecursively(UI_DIR);
-console.log(`🔍 扫描到 ${componentFiles.length} 个 UI 组件，开始深度解析...`);
+// =====================
+// CHILDREN FIX (CRITICAL)
+// =====================
+function ensureChildren(props, sourceFile) {
+    const text = sourceFile.getFullText();
 
+    const hasChildren = props.some(p => p.name === "children");
+
+    if (!hasChildren && (
+        text.includes("children") ||
+        text.includes("React.FC") ||
+        text.includes("PropsWithChildren")
+    )) {
+        props.push({
+            name: "children",
+            type: "React.ReactNode",
+            required: false,
+            description: "Component children",
+            defaultValue: undefined,
+        });
+    }
+
+    return props;
+}
+
+// =====================
+// GENERIC + DEFAULT VALUE FIX
+// =====================
+function enrichWithTSMorph(props, sourceFile) {
+    const final = [];
+
+    for (const p of props) {
+        let type = p.type;
+
+        try {
+            const propDecl = sourceFile.getDescendantsOfKind(
+                require("ts-morph").SyntaxKind.PropertySignature
+            ).find(d => d.getName?.() === p.name);
+
+            if (propDecl) {
+                type = propDecl.getType().getText();
+            }
+        } catch (e) {
+            // ignore resolution errors
+        }
+
+        final.push({
+            ...p,
+            type,
+        });
+    }
+
+    return final;
+}
+
+// =====================
+// DOCGEN CONFIG
+// =====================
 const options = {
     savePropValueFromString: true,
     propFilter: (prop) => {
+        if (prop.name === "children") return true;
         if (prop.parent) {
-            // 100% 过滤第三方依赖和 React 原生的 1000+ 行属性
-            return !prop.parent.fileName.includes('node_modules');
+            return !prop.parent.fileName.includes("node_modules");
         }
         return true;
     },
 };
 
+// =====================
+// MAIN
+// =====================
+const componentFiles = getFilesRecursively(UI_DIR);
+console.log(`🔍 Found ${componentFiles.length} components`);
+
 const docs = docgen.parse(componentFiles, options);
 
 const output = docs.map(doc => {
-    const matchedFile = componentFiles.find(f => f.endsWith(`${doc.displayName}.tsx`) || f.endsWith(`${doc.displayName}/index.tsx`));
-    const jsdoc = matchedFile ? getJSDocByPhysicalSlice(matchedFile) : { description: "", examples: [] };
+    const file = componentFiles.find(f =>
+        f.endsWith(`${doc.displayName}.tsx`) ||
+        f.endsWith(`${doc.displayName}/index.tsx`)
+    );
+
+    const sourceFile = file ? project.addSourceFileAtPath(file) : null;
+
+    const jsdoc = file ? getJSDocByPhysicalSlice(file) : {
+        description: "",
+        examples: [],
+    };
+
+    let props = doc.props
+        ? Object.keys(doc.props).map(name => ({
+            name,
+            type: doc.props[name].type?.name || "unknown",
+            required: doc.props[name].required ?? false,
+            description: doc.props[name].description || "",
+            defaultValue: doc.props[name].defaultValue || undefined,
+        }))
+        : [];
+
+    if (sourceFile) {
+        props = ensureChildren(props, sourceFile);
+        props = enrichWithTSMorph(props, sourceFile);
+    }
 
     return {
         name: doc.displayName,
-        description: jsdoc.description || "共享 UI 组件",
+        description: jsdoc.description || "Shared UI component",
         examples: jsdoc.examples,
-        props: Object.keys(doc.props).map(propName => ({
-            name: propName,
-            type: doc.props[propName].type.name,
-            required: doc.props[propName].required,
-            description: doc.props[propName].description,
-        }))
+        props,
     };
 });
 
-// 💾 产物一：写入用于给 AI 精准查询的 JSON 文件
+// =====================
+// WRITE JSON
+// =====================
 fs.writeFileSync(
     SPEC_OUTPUT,
-    JSON.stringify(output, null, 2, 'utf-8')
+    JSON.stringify(output, null, 2),
+    "utf-8"
 );
-console.log('📦 1. 瘦身版数据燃料 .ui-spec.json 生成成功！');
 
+console.log("📦 .ui-spec.json generated");
 
-// 🚀 产物二：自动生成/更新给 AI 当作导航地图的 COMPONENTS.md
-let mdContent = `# 项目共享组件库索引 (Shared UI Components)\n\n`;
-mdContent += `> ⚠️ 此文件由脚本自动维护，请勿手动修改。最后更新时间: ${new Date().toLocaleString()}\n\n`;
-mdContent += `当前项目中可用的共享组件列表如下：\n\n`;
+// =====================
+// WRITE MD
+// =====================
+let md = `# Shared UI Components\n\n`;
+md += `Auto-generated: ${new Date().toLocaleString()}\n\n`;
 
-output.forEach(comp => {
-    mdContent += `- **${comp.name}**: ${comp.description}\n`;
-});
+for (const c of output) {
+    md += `- **${c.name}**: ${c.description}\n`;
+}
 
-fs.writeFileSync(MD_OUTPUT, mdContent, 'utf-8');
-console.log('📝 2. AI 导航地图 COMPONENTS.md 自动更新成功！');
-console.log('🎉 所有流程闭环完成！');
+fs.writeFileSync(MD_OUTPUT, md, "utf-8");
+
+console.log("📝 COMPONENTS.md generated");
+console.log("🎉 Done");

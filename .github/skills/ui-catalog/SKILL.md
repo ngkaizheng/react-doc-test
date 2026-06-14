@@ -19,3 +19,15 @@ Identify which shared components (like Button, Card, Spinner) match the user's r
 For every shared component you intend to use, you MUST execute the local spec retriever script before writing any code. Run this exact terminal command:
 ```bash
 node .github/skills/ui-catalog/scripts/get-spec.cjs <component_name>
+```
+
+### Explicit Component Import Paths
+When referencing shared UI components in code, use the exact file import paths below to avoid resolution errors (the agent is not permitted to read the shared-ui directory):
+
+```ts
+import { Card } from './components/shared-ui/Card/Card';
+import { Button } from './components/shared-ui/Button/Button';
+import { LoadingSpinner } from './components/shared-ui/LoadingSpinner/LoadingSpinner';
+```
+
+If additional components are required, add their concrete file paths here following the same pattern so imports succeed without inspecting `shared-ui`.

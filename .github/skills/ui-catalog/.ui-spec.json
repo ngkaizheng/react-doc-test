@@ -3,8 +3,7 @@
     "name": "Button",
     "description": "Global uniform brand button, supports loading state and 3 colors.",
     "examples": [
-      "<Button variant=\"primary\" isLoading={formSubmitting} type=\"submit\">Submit</Button>",
-      "<Button variant=\"secondary\" onClick={handleCancel}>Cancel</Button>\n"
+      "<Button variant=\"primary\" isLoading={formSubmitting} type=\"submit\">Submit</Button> <Button variant=\"secondary\" onClick={handleCancel}>Cancel</Button>"
     ],
     "props": [
       {
@@ -24,12 +23,18 @@
         "type": "boolean | undefined",
         "required": false,
         "description": "Show loading spinner"
+      },
+      {
+        "name": "children",
+        "type": "React.ReactNode",
+        "required": false,
+        "description": "React children node"
       }
     ]
   },
   {
     "name": "Card",
-    "description": "共享 UI 组件",
+    "description": "Shared UI component",
     "examples": [],
     "props": [
       {
@@ -45,8 +50,14 @@
         "description": ""
       },
       {
+        "name": "children",
+        "type": "React.ReactNode",
+        "required": true,
+        "description": ""
+      },
+      {
         "name": "extra",
-        "type": "ReactNode",
+        "type": "React.ReactNode",
         "required": false,
         "description": ""
       }
@@ -54,7 +65,7 @@
   },
   {
     "name": "LoadingSpinner",
-    "description": "共享 UI 组件",
+    "description": "Shared UI component",
     "examples": [],
     "props": [
       {
@@ -75,8 +86,7 @@
     "name": "StatusCard",
     "description": "用于展示系统状态的专用卡片，支持高亮模式和状态点击回调。",
     "examples": [
-      "<StatusCard status=\"success\" title=\"Upload Complete\" onRetry={handleRetry} />",
-      "<StatusCard status=\"error\" title=\"Failed\" isHighlighted={true} />\n"
+      "<StatusCard status=\"success\" title=\"Upload Complete\" onRetry={handleRetry} /> <StatusCard status=\"error\" title=\"Failed\" isHighlighted={true} />"
     ],
     "props": [
       {
@@ -107,7 +117,7 @@
   },
   {
     "name": "ZhengKaiMagicBox",
-    "description": "共享 UI 组件",
+    "description": "Shared UI component",
     "examples": [],
     "props": [
       {

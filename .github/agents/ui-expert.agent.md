@@ -2,7 +2,7 @@
 name: "ui-expert"
 description: "Strict MCP-based UI architect. Requires verified contracts for all component integration."
 user-invocable: true
-tools: [read, edit, 'ui-catalog-mcp/*']
+tools: [read, agent, edit, 'ui-catalog-mcp/*']
 ---
 
 # UI Expert Instructions

@@ -6,26 +6,31 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:spec": "node .github\\skills\\ui-catalog\\scripts\\parse-ui.cjs",
+    "build:ui": "node .github\\skills\\ui-catalog\\scripts\\build-ui.cjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@babel/parser": "^7.29.7",
+    "@babel/traverse": "^7.29.7",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "ts-morph": "^28.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@tailwindcss/vite": "^4.0.0",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
     "react-docgen-typescript": "^2.4.0",
+    "tailwindcss": "^4.0.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12"

@@ -1,0 +1,99 @@
+[
+  {
+    "name": "Button",
+    "description": "Global uniform brand button, supports loading state and 3 colors.",
+    "examples": [
+      "<Button variant=\"primary\" isLoading={formSubmitting} type=\"submit\">Submit</Button>",
+      "<Button variant=\"secondary\" onClick={handleCancel}>Cancel</Button>\n"
+    ],
+    "props": [
+      {
+        "name": "variant",
+        "type": "\"primary\" | \"secondary\" | \"danger\" | undefined",
+        "required": false,
+        "description": "Button color theme"
+      },
+      {
+        "name": "size",
+        "type": "\"sm\" | \"md\" | \"lg\" | undefined",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "isLoading",
+        "type": "boolean | undefined",
+        "required": false,
+        "description": "Show loading spinner"
+      }
+    ]
+  },
+  {
+    "name": "Card",
+    "description": "共享 UI 组件",
+    "examples": [],
+    "props": [
+      {
+        "name": "title",
+        "type": "string | undefined",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "isHoverable",
+        "type": "boolean | undefined",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "extra",
+        "type": "ReactNode",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "LoadingSpinner",
+    "description": "共享 UI 组件",
+    "examples": [],
+    "props": [
+      {
+        "name": "size",
+        "type": "\"sm\" | \"md\" | \"lg\" | undefined",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "tip",
+        "type": "string | undefined",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "ZhengKaiMagicBox",
+    "description": "共享 UI 组件",
+    "examples": [],
+    "props": [
+      {
+        "name": "magicSecret",
+        "type": "string",
+        "required": true,
+        "description": ""
+      },
+      {
+        "name": "onExplode",
+        "type": "((power: number) => void) | undefined",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "isEnchanted",
+        "type": "boolean",
+        "required": true,
+        "description": ""
+      }
+    ]
+  }
+]

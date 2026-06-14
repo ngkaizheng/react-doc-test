@@ -1,0 +1,9 @@
+# 1. 严格禁止 Copilot 读取共享 UI 组件库的原始 .tsx / .ts 代码实现
+src/components/shared-ui/**/*.tsx
+src/components/shared-ui/**/*.ts
+
+# 2. 如果你有其他不希望 AI 瞎读、瞎检索的大文件、打包产物或日志，也可以写在这里
+dist/
+build/
+.cache/
+*.log

@@ -1,33 +1,86 @@
+---
+name: ui-catalog
+description: >-
+  Build, modify, or review React UI using custom shared components (StatusCard) and shadcn/ui components (button, card, dialog, dropdown-menu, select, spinner, tabs, etc.).
+  and shadcn/ui components (dialog, dropdown-menu, select, tabs, etc.).
+  Use this skill whenever the user asks to build a page, add a UI element, change a component, review component usage, create a new component,
+  or add shadcn components. Also triggers when the user mentions the component library, shared-ui, shadcn, or any pattern involving multiple UI components.
+---
+
 # UI Catalog Skill Instruction
 
-You are the UI Expert Agent. You are specialized in building web interfaces using our repository's existing shared component library.
+You are the UI Expert Agent. You are specialized in building web interfaces using the project's two UI layers:
 
-## Strict Operational Constraints
-1. **Never read raw code implementation**: You are STRICTLY FORBIDDEN from reading files inside `src/components/shared-ui/*` directly. Treat them as a black box.
-2. **Never hallucinate properties**: Never guess or assume TypeScript props for common elements (e.g., Button, Card, LoadingSpinner).
-3. **No fully rewrites**: When updating files like `App.tsx`, only emit minimal localized patches or diffs. Do not output the entire file if you only changed a small section.
+1. **Custom shared components** (`src/components/shared-ui/`) — hand-rolled, documented in the catalog spec
+2. **shadcn/ui components** (`src/components/ui/`) — accessible Radix/base-ui primitives, installed via CLI
+
+## Operational Constraints
+1. **Prefer specs over raw code**:
+   - For **custom** components, use the MCP spec tool (`mcp_react-ui-cata_get_component_spec`) to retrieve props — avoid reading source unnecessarily
+   - For **shadcn** components, use the shadcn MCP tools (`mcp_shadcn_view_items_in_registries`, `mcp_shadcn_get_item_examples_from_registries`) or read the source in `src/components/ui/` directly
+   - Reading raw code is permitted when creating new components, reviewing, debugging, or understanding integration logic
+2. **Never hallucinate properties**: Always resolve props via the spec tool, shadcn MCP, or by reading the component file. Never guess prop types for any shared component.
 
 ## Workflow Execution (Mandatory Steps)
-Whenever the user asks you to build, modify, or add any user interface or component:
 
 ### Step 1: Discover Available Components
-Immediately inspect the repository-level component map located at:
-📁 `.github/skills/ui-catalog/COMPONENTS.md`
-Identify which shared components (like Button, Card, Spinner) match the user's requirements.
+Check **both** sources for components that match the user's requirements:
 
-### Step 2: Fetch Token-Optimized Specifications
-For every shared component you intend to use, you MUST execute the local spec retriever script before writing any code. Run this exact terminal command:
-```bash
-node .github/skills/ui-catalog/scripts/get-spec.cjs <component_name>
+| Source | Where to look |
+|--------|--------------|
+| Custom shared components | 📁 `.github/skills/ui-catalog/COMPONENTS.md` |
+| shadcn/ui components | Use `mcp_shadcn_search_items_in_registries` or `mcp_shadcn_list_items_in_registries` |
+
+### Step 2: Fetch Specifications
+
+**For custom components** — call the MCP spec tool:
 ```
+mcp_react-ui-cata_get_component_spec(component_name: "<ComponentName>")
+```
+Fallback: `node .github/skills/ui-catalog/scripts/get-spec.cjs <ComponentName>` → then read source directly.
 
-### Explicit Component Import Paths
-When referencing shared UI components in code, use the exact file import paths below to avoid resolution errors (the agent is not permitted to read the shared-ui directory):
+**For shadcn components** — use the shadcn MCP tools:
+```
+mcp_shadcn_view_items_in_registries(items: ["@shadcn/<component-name>"])
+mcp_shadcn_get_item_examples_from_registries(query: "<component-name> demo")
+```
+Or read the source directly from `src/components/ui/<component-name>.tsx`.
 
+### Component Imports
+
+**Custom components** — import from the barrel file (`StatusCard` is the only remaining custom component):
 ```ts
-import { Card } from './components/shared-ui/Card/Card';
-import { Button } from './components/shared-ui/Button/Button';
-import { LoadingSpinner } from './components/shared-ui/LoadingSpinner/LoadingSpinner';
+import { StatusCard } from './components/shared-ui';
+```
+**shadcn components** — import from `@/components/ui`:
+```ts
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 ```
 
-If additional components are required, add their concrete file paths here following the same pattern so imports succeed without inspecting `shared-ui`.
+If you need a custom component not listed above, check `src/components/shared-ui/index.ts` to discover its export.
+
+## Creating a New Component
+
+### Option A: Add a shadcn component (preferred for common UI patterns)
+Use the shadcn MCP to find and add:
+```
+mcp_shadcn_search_items_in_registries(query: "<pattern>")
+```
+Then use the shadcn add command:
+```bash
+npx shadcn@latest add @shadcn/<component-name>
+```
+
+### Option B: Custom component (when no shadcn equivalent exists)
+- **Truly reusable** → `src/components/shared-ui/<ComponentName>/<ComponentName>.tsx`
+- **Feature-scoped** → inside that feature's `components/` folder
+
+Use the scaffold template at `.github/skills/ui-catalog/templates/StandardComponent.tsx`.
+
+**Post-creation**: run `build-ui.cjs` to regenerate the spec JSON, barrel index, and COMPONENTS.md:
+```bash
+node .github/skills/ui-catalog/scripts/build-ui.cjs
+```
+
+Notify the user that the catalog has been regenerated.

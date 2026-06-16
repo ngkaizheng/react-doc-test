@@ -34,11 +34,15 @@ repo-root/
 │       └── project-memory-vector-db/
 │           ├── SKILL.md
 │           ├── plan.md
+│           ├── plan-phase2-server.md
 │           └── scripts/
 │               ├── init.py              ← Bootstrap docs/ + manifest.json
 │               ├── session_start.py     ← Reads MEMORY.md → systemMessage
 │               ├── indexer.py           ← Stop hook: chunk → embed → store in Chroma
-│               ├── retriever.py         ← On-demand: semantic search
+│               ├── retriever.py         ← On-demand: semantic search (CLI or server mode)
+│               ├── retriever_lib.py     ← Shared formatting utilities
+│               ├── retriever-server.py  ← FastAPI server (keeps model warm)
+│               ├── start-server.ps1     ← Windows launcher for server
 │               └── templates/
 │                   ├── MEMORY.md
 │                   ├── WIKI.md
@@ -59,12 +63,25 @@ The `indexer.py` script runs automatically at the end of every agent session. It
 Only changed files are re-indexed — incremental by default.
 
 ### Retrieval Phase (On-Demand)
-When the agent needs knowledge, it runs:
+When the agent needs knowledge, it runs the retriever in one of two modes:
+
+**Direct mode (default) — loads model per query (~1-2s):**
 ```bash
 python .github/skills/project-memory-vector-db/scripts/retriever.py --query "..." --top-k 5
 ```
+
+**Server mode — connects to persistent server (~50ms):**
+```bash
+# Terminal 1: Start the server once
+pip install fastapi uvicorn
+python .github/skills/project-memory-vector-db/scripts/retriever-server.py --port 8000
+
+# Terminal 2 (or agent): Query via server
+python .github/skills/project-memory-vector-db/scripts/retriever.py --server --query "..." --top-k 5
+```
+
 The retriever:
-1. Embeds the query using the same model
+1. Embeds the query using the same `all-MiniLM-L6-v2` model
 2. Searches Chroma for the most similar chunks
 3. Returns JSON: file path, heading, line range, similarity score, content preview
 4. The agent reads the full section using `read_file`
@@ -130,4 +147,7 @@ Chroma persistent storage. Auto-managed. Add to `.gitignore`. Delete and re-run 
 | `init.py` | New repo setup | Creates docs/ + templates + manifest.json |
 | `session_start.py` | Automatically (SessionStart hook) | Reads MEMORY.md → outputs systemMessage |
 | `indexer.py` | Automatically (Stop hook) | Chunks docs → embeds → stores in Chroma |
-| `retriever.py` | On-demand by agent | Queries Chroma, returns relevant chunks as JSON |
+| `retriever.py` | On-demand by agent | Semantic search (direct or `--server` mode) |
+| `retriever-server.py` | Manual (persistent process) | FastAPI server, keeps model warm in memory |
+| `start-server.ps1` | Manual (Windows) | Launches retriever-server.py in background |
+| `retriever_lib.py` | Imported by other scripts | Shared formatting utilities |

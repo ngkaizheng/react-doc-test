@@ -9,11 +9,25 @@ Merge these rules into your root AGENTS.md or .github/copilot-instructions.md.
 
 1. **MEMORY.md is always loaded** at session start. Read it immediately for current task context.
 2. **Do NOT read docs/WIKI.md, docs/LEARNING.md, or docs/features/*.md in full.** Use vector search instead.
-3. **When you need knowledge**, always use vector search first:
+3. **When you need knowledge**, use vector search. Two modes available:
 
+   **Quick mode (direct, ~1-2s first query):**
    ```bash
    python .github/skills/project-memory-vector-db/scripts/retriever.py --query "<your question>" --top-k 5
    ```
+
+   **Fast mode (server, ~50ms after startup):**
+   If retriever-server.py is running, add `--server`:
+   ```bash
+   python .github/skills/project-memory-vector-db/scripts/retriever.py --server --query "<your question>" --top-k 5
+   ```
+
+   To start the server (keeps model warm, recommended for multiple queries):
+   ```bash
+   pip install fastapi uvicorn
+   python .github/skills/project-memory-vector-db/scripts/retriever-server.py --port 8000
+   ```
+   Or on Windows: `.\start-server.ps1`
 
 4. After getting search results, read the relevant section using `read_file` with the returned `line_start` and `line_end`.
 5. **Read docs/ sections** when: the user asks about architecture/decisions, reports a bug/error, or before making a new design decision.

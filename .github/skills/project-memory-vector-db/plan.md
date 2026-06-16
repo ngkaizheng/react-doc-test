@@ -110,3 +110,43 @@ pip install chromadb sentence-transformers
 - **Empty docs/:** Indexer handles gracefully, outputs warning
 - **Very long sections:** Split by paragraph if >512 tokens
 - **Chroma corruption:** Delete vector-db/ and re-run indexer = full rebuild
+
+---
+
+## Phase 2: Persistent Retrieval Server
+
+### Problem
+Every retriever.py call loads the 80MB embedding model → ~1-2s latency per query.
+
+### Solution
+FastAPI server (`retriever-server.py`) keeps the model warm in memory. Queries drop to ~50ms.
+
+### Architecture
+```
+retriever-server.py (long-running process)
+    │
+    ├── Startup: load all-MiniLM-L6-v2 once
+    ├── Connect to Chroma
+    │
+    └── Endpoints:
+        GET /search?q=...&k=5     → JSON results (same format as CLI)
+        GET /health                → {"status": "ok"}
+        GET /stats                 → collection statistics
+```
+
+### Client Mode
+`retriever.py --server` delegates to the server via HTTP instead of loading the model directly. Falls back to direct mode (model load per query) if `--server` is not specified.
+
+### Dependencies (server only)
+```bash
+pip install fastapi uvicorn
+```
+~5MB additional, only needed if running the server.
+
+### When to Use Server Mode
+| Scenario | Use Direct | Use Server |
+|----------|-----------|------------|
+| Single query per session | ✅ Fine | ⚠️ Overkill |
+| Multiple queries per session | ❌ 1-2s each | ✅ 50ms each |
+| Many feature docs (100+) | ❌ Slow | ✅ Fast |
+| Quick one-off lookup | ✅ Simple | ⚠️ Extra setup |

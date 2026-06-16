@@ -1,33 +1,31 @@
 """
 On-demand retriever for Project Memory Vector DB system.
 
-Called by the agent when it needs to find relevant knowledge.
-Embeds the query using sentence-transformers, searches Chroma,
-and returns the most similar chunks as JSON.
+Two modes:
+  1. Direct (default): Loads model, queries Chroma directly.
+  2. Server: Delegates to a running retriever-server.py via HTTP.
 
 Usage:
-    python retriever.py --query "How does payment retry work?" --top-k 5
-    python retriever.py --query "JWT authentication" --top-k 3 --threshold 0.5
+    python retriever.py --query "How does payment retry work?"
+    python retriever.py --server --query "JWT auth" --port 8000
 """
 
 import argparse
 import json
 import os
 import sys
+from urllib.request import urlopen, Request
+from urllib.parse import urlencode
 
-REPO_ROOT = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "../../../.."
-    )
+from retriever_lib import (
+    REPO_ROOT, PROJECT_DIR, VECTOR_DB_DIR,
+    format_chroma_results, filter_by_threshold,
+    print_json_output, die
 )
-PROJECT_DIR = os.path.join(REPO_ROOT, "project-memory-vector-db")
-VECTOR_DB_DIR = os.path.join(PROJECT_DIR, "vector-db")
-MANIFEST_PATH = os.path.join(PROJECT_DIR, "manifest.json")
 
 
 def get_collection():
-    """Get the Chroma collection (lazy import)."""
+    """Get the Chroma collection (lazy import, direct mode only)."""
     import logging
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 
@@ -35,104 +33,73 @@ def get_collection():
     from chromadb.utils import embedding_functions
 
     if not os.path.exists(VECTOR_DB_DIR):
-        print(json.dumps({"error": "Vector database not found. Run indexer.py first."}))
-        sys.exit(1)
+        die("Vector database not found. Run indexer.py first.")
 
     client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
-
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
         model_name="all-MiniLM-L6-v2"
     )
 
     try:
-        collection = client.get_collection(
+        return client.get_collection(
             name="project-memory",
             embedding_function=ef
         )
-        return collection
     except ValueError:
-        print(json.dumps({"error": "No documents indexed yet. Run indexer.py first."}))
-        sys.exit(1)
+        die("No documents indexed yet. Run indexer.py first.")
 
 
-def truncate_preview(text: str, max_chars: int = 200) -> str:
-    """Truncate text to a preview length, preserving whole words."""
-    if len(text) <= max_chars:
-        return text
-    truncated = text[:max_chars]
-    # Cut at last space to avoid mid-word
-    last_space = truncated.rfind(' ')
-    if last_space > 0:
-        truncated = truncated[:last_space]
-    return truncated + "..."
+def search_server(query: str, top_k: int, threshold: float, port: int):
+    """Delegate search to the running retriever-server."""
+    params = urlencode({"q": query, "k": top_k, "threshold": threshold})
+    url = f"http://127.0.0.1:{port}/search?{params}"
+
+    try:
+        req = Request(url)
+        with urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except ConnectionRefusedError:
+        die(f"Cannot connect to server at port {port}. Is retriever-server.py running?")
+    except Exception as e:
+        die(f"Server request failed: {e}")
+
+    print_json_output(query, data.get("results", []))
+    sys.exit(0)
 
 
-def format_results(results, top_k: int) -> list[dict]:
-    """Format Chroma results into a clean JSON structure."""
-    formatted = []
-    if not results or not results["ids"] or not results["ids"][0]:
-        return formatted
-
-    for i in range(len(results["ids"][0])):
-        chunk_id = results["ids"][0][i]
-        metadata = results["metadatas"][0][i] if results["metadatas"] else {}
-        distance = results["distances"][0][i] if results.get("distances") else 0.0
-        document = results["documents"][0][i] if results.get("documents") else ""
-
-        # Cosine distance → similarity score (1 = identical)
-        score = round(1.0 - distance, 4)
-
-        formatted.append({
-            "id": chunk_id,
-            "score": score,
-            "file": metadata.get("file", ""),
-            "heading": metadata.get("heading", ""),
-            "parent_heading": metadata.get("parent_heading", ""),
-            "line_start": metadata.get("line_start", 0),
-            "line_end": metadata.get("line_end", 0),
-            "preview": truncate_preview(document, 300)
-        })
-
-    return formatted
+def search_direct(query: str, top_k: int, threshold: float):
+    """Search by loading the model and querying Chroma directly."""
+    collection = get_collection()
+    results = collection.query(query_texts=[query], n_results=top_k)
+    formatted = format_chroma_results(results)
+    formatted = filter_by_threshold(formatted, threshold)
+    print_json_output(query, formatted)
+    sys.exit(0)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Semantic search over project memory")
+    parser = argparse.ArgumentParser(
+        description="Semantic search over project memory"
+    )
     parser.add_argument("--query", "-q", type=str, required=True,
                         help="Search query (natural language)")
     parser.add_argument("--top-k", "-k", type=int, default=5,
-                        help="Number of results to return (default: 5)")
+                        help="Number of results (default: 5)")
     parser.add_argument("--threshold", "-t", type=float, default=0.3,
-                        help="Minimum similarity threshold (0.0-1.0, default: 0.3)")
+                        help="Minimum similarity threshold (default: 0.3)")
+    parser.add_argument("--server", "-s", action="store_true",
+                        help="Use server mode (connect to retriever-server)")
+    parser.add_argument("--port", "-p", type=int, default=8000,
+                        help="Server port (default: 8000, used with --server)")
     args = parser.parse_args()
 
-    # Validate
     if args.top_k < 1 or args.top_k > 50:
-        print(json.dumps({"error": "top-k must be between 1 and 50"}))
-        sys.exit(1)
+        die("top-k must be between 1 and 50")
 
-    collection = get_collection()
-
-    # Query Chroma
-    results = collection.query(
-        query_texts=[args.query],
-        n_results=args.top_k
-    )
-
-    formatted = format_results(results, args.top_k)
-
-    # Filter by threshold if any
-    if args.threshold > 0.0:
-        formatted = [r for r in formatted if r["score"] >= args.threshold]
-
-    output = {
-        "query": args.query,
-        "results_count": len(formatted),
-        "results": formatted
-    }
-
-    print(json.dumps(output, indent=2, ensure_ascii=False))
-    sys.exit(0)
+    if args.server:
+        search_server(args.query, args.top_k, args.threshold, args.port)
+    else:
+        search_direct(args.query, args.top_k, args.threshold)
 
 
 if __name__ == "__main__":

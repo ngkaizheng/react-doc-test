@@ -5,6 +5,19 @@ This file defines how the agent should interact with the project memory system.
 Merge these rules into your root AGENTS.md or .github/copilot-instructions.md.
 -->
 
+## 🔴 MANDATORY: Retrieval Priority Rule
+
+When you need project knowledge (architecture, design, features, bugs, standards, decisions):
+
+1. **FIRST** → Call `search_memory(query)` — this is a semantic/vector search that finds
+   conceptually related content even when exact keywords don't match.
+2. **SECOND** → If `search_memory()` returns no useful results, use `grep_search` or
+   `file_search` as fallback.
+
+**Why this order matters:** Vector search finds *meaning* not just *text*. A query like
+"payment retry" will also match "transaction failure recovery" and "billing retry logic" —
+things keyword search misses entirely.
+
 ## MCP Tools Available
 
 This project has an MCP server registered in `.vscode/mcp.json` under the name `project-memory`.
@@ -21,13 +34,6 @@ You can use these tools directly without running shell commands:
 | `add_wiki_entry(heading, content, section)` | Add content to WIKI.md |
 | `refresh_index()` | Rebuild Chroma vector index after doc changes |
 | `index_status()` | Check vector index health |
-
-**Recommended workflow:**
-1. At session start, call `get_memory()` to see current working memory.
-2. Use `search_memory()` when you need architectural context or troubleshooting knowledge.
-3. After fixing a bug, use `add_learning()` to document it.
-4. After making a final decision, use `add_wiki_entry()` to record it.
-5. After any doc change, call `refresh_index()` to keep search results current.
 
 ## Context Retrieval Rules
 

@@ -6,7 +6,9 @@ description: >-
   and on-demand semantic retrieval via MCP tools (search_memory, add_learning, etc.).
   Run `init.py` to bootstrap the files in a new repo.
   Triggers on: project memory, session context, knowledge management, long-term memory,
-  RAG, vector search, semantic search, MCP, feature docs, wiki, lessons learned, agent rules.
+  RAG, vector search, semantic search, MCP, feature docs, wiki, lessons learned, agent rules,
+  architecture, design, implement, how does, how should, what is, project knowledge,
+  codebase knowledge, feature documentation, coding standards, tech stack.
 ---
 
 # Project Memory Skill — Vector DB Edition

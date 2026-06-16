@@ -58,8 +58,7 @@ def init_model():
 # ── FastMCP server ────────────────────────────────────────────────
 
 mcp = FastMCP(
-    "Project Memory",
-    description="Semantic search and management of project documentation, working memory, and lessons learned."
+    "Project Memory"
 )
 
 
@@ -209,8 +208,8 @@ def refresh_index() -> str:
             capture_output=True, text=True, timeout=60
         )
         output = result.stdout.strip() or result.stderr.strip()
-        # Reload collection after index
-        init_model()
+        # No need to re-init — Chroma PersistentClient shares the same SQLite DB
+        # The existing collection reflects changes after subprocess commits
         count = collection.count() if collection else 0
         return f"Index rebuilt. Chroma now has {count} chunks.\n{output}"
     except subprocess.TimeoutExpired:

@@ -56,44 +56,19 @@ repo-root/
 
 ## How It Works
 
-### Index Phase (Stop Hook)
-The `indexer.py` script runs automatically at the end of every agent session. It:
-1. Reads `docs/WIKI.md`, `docs/LEARNING.md`, and all `docs/features/*.md`
-2. Splits each file into chunks by H2 (`##`) and H3 (`###`) headings
-3. Generates embeddings using **sentence-transformers/all-MiniLM-L6-v2** (384-dim)
-4. Stores chunks in **Chroma** (persistent, on-disk) with metadata (file, heading, line range)
-5. Updates `manifest.json` with file hashes to track changes
+### Session Start
+A `SessionStart` hook reads `MEMORY.md` and injects it as the agent's system message,
+telling the agent which MCP tools are available and the retrieval priority rule.
 
-Only changed files are re-indexed — incremental by default.
+### Knowledge Retrieval
+The agent uses MCP tools (primarily `search_memory`) to find relevant knowledge.
+Results include file paths and line numbers so the agent can `read_file` the
+full section. A CLI fallback (`retriever.py`) is available if MCP is unavailable.
 
-### Retrieval Phase (On-Demand)
-When the agent needs knowledge, it runs the retriever in one of two modes:
-
-**Direct mode (default) — loads model per query (~1-2s):**
-```bash
-python .github/skills/project-memory-vector-db/scripts/retriever.py --query "..." --top-k 5
-```
-
-**Server mode — connects to persistent server (~50ms):**
-```bash
-# Terminal 1: Start the server once
-pip install fastapi uvicorn
-python .github/skills/project-memory-vector-db/scripts/retriever-server.py --port 8000
-
-# Terminal 2 (or agent): Query via server
-python .github/skills/project-memory-vector-db/scripts/retriever.py --server --query "..." --top-k 5
-```
-
-The retriever:
-1. Embeds the query using the same `all-MiniLM-L6-v2` model
-2. Searches Chroma for the most similar chunks
-3. Returns JSON: file path, heading, line range, similarity score, content preview
-4. The agent reads the full section using `read_file`
-
-### Session Start (SessionStart Hook)
-The `session_start.py` script runs at session start and:
-1. Reads `MEMORY.md` — injects as `systemMessage`
-2. Informs the agent: "Vector search is available via MCP tools or retriever.py"
+### Indexing
+A `Stop` hook runs `indexer.py` at session end. It scans all markdown files in
+`docs/`, chunks by H2/H3 headings, embeds via `all-MiniLM-L6-v2`, and stores
+in Chroma. Only changed files are re-indexed (SHA256 change tracking).
 
 ## MCP Server
 
@@ -134,26 +109,16 @@ VS Code automatically starts the server on demand and keeps it running for the s
 | `memory://current` | Current MEMORY.md |
 | `memory://index-status` | Index statistics |
 
-### Dependency
-```bash
-pip install mcp[cli]
-```
-
-### Evolution
-The MCP server is Phase 3 of the project memory evolution:
-- **Phase 1:** `retriever.py` CLI (loads model per query)
-- **Phase 2:** `retriever-server.py` FastAPI (warm model, HTTP)
-- **Phase 3:** `mcp-server.py` MCP (native protocol, no shell)
-
 ## Dependencies
 
 ```bash
-pip install chromadb sentence-transformers
+pip install chromadb sentence-transformers mcp[cli]
 ```
 
 - **chromadb** — embedded vector database (no server, on-disk storage)
 - **sentence-transformers** — local embedding model (`all-MiniLM-L6-v2`, 80MB, 384-dim)
-- Total disk: ~150MB (one-time download on first run)
+- **mcp[cli]** — MCP Python SDK for native VS Code agent tools
+- Total disk: ~155MB (one-time download on first run)
 
 ## Getting Started in a New Repo
 
@@ -163,17 +128,6 @@ python .github/skills/project-memory-vector-db/scripts/init.py
 ```
 
 Then merge or copy the AGENTS.md rules into your root AGENTS.md or .github/copilot-instructions.md.
-
-## Chunking Strategy
-
-Based on Microsoft RAG best practices for markdown (format-specific chunking):
-| Aspect | Approach |
-|--------|----------|
-| **Boundary** | H2 (`##`) and H3 (`###`) headings |
-| **Overlap** | None needed — headings are natural semantic separators |
-| **Max size** | Sections exceeding 512 tokens are split by paragraph |
-| **Metadata** | Source file, heading, parent heading, line_start, line_end, section_key |
-| **Model** | `all-MiniLM-L6-v2` — 384-dim, good balance of speed vs quality |
 
 ## Maintenance
 
@@ -201,7 +155,7 @@ Chroma persistent storage. Auto-managed. Add to `.gitignore`. Delete and re-run 
 | `init.py` | New repo setup | Creates docs/ + templates + manifest.json |
 | `session_start.py` | Automatically (SessionStart hook) | Reads MEMORY.md → outputs systemMessage |
 | `indexer.py` | Automatically (Stop hook) | Chunks docs → embeds → stores in Chroma |
-| `retriever.py` | On-demand by agent | Semantic search (direct or `--server` mode) |
+| `retriever.py` | On-demand by agent | Semantic search (CLI fallback) |
 | `mcp-server.py` | Auto by VS Code (MCP) | Native tools: search, read, write memory files |
 | `memory.py` | Imported by mcp-server.py | File operations for MEMORY/WIKI/LEARNING |
 | `retriever-server.py` | Manual (persistent process) | FastAPI server, keeps model warm in memory |

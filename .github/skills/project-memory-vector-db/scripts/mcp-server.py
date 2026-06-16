@@ -26,6 +26,8 @@ from memory import (
     append_wiki_entry, append_learning_entry, get_doc_list,
     MEMORY_PATH
 )
+# In-process indexer — no subprocess needed
+from indexer import run_incremental_index
 
 # ── Chroma + model: loaded once at startup ────────────────────────
 import chromadb
@@ -197,23 +199,18 @@ def add_wiki_entry(heading: str, content: str, section: str = "") -> str:
 def refresh_index() -> str:
     """Rebuild the Chroma vector index from all docs/ files.
     Call this after adding or modifying documentation to keep search results current.
+    Runs in-process — reuses the already-loaded embedding model for maximum speed.
     """
     try:
-        import subprocess
-        indexer_path = os.path.join(
-            REPO_ROOT, ".github", "skills", "project-memory-vector-db", "scripts", "indexer.py"
+        result = run_incremental_index(collection=collection)
+        col = result["collection"]
+        count = col.count() if col else 0
+        return (
+            f"Index rebuilt. Chroma now has {count} chunks.\n"
+            f"  • {result['indexed']} files indexed\n"
+            f"  • {result['skipped']} files skipped (unchanged)\n"
+            f"  • {result['removed']} files removed"
         )
-        result = subprocess.run(
-            [sys.executable, indexer_path],
-            capture_output=True, text=True, timeout=60
-        )
-        output = result.stdout.strip() or result.stderr.strip()
-        # No need to re-init — Chroma PersistentClient shares the same SQLite DB
-        # The existing collection reflects changes after subprocess commits
-        count = collection.count() if collection else 0
-        return f"Index rebuilt. Chroma now has {count} chunks.\n{output}"
-    except subprocess.TimeoutExpired:
-        return "Error: Indexer timed out after 60 seconds."
     except Exception as e:
         return f"Error refreshing index: {e}"
 

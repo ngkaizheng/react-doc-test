@@ -179,7 +179,44 @@ def remove_file_from_index(file_key: str, collection):
     collection.delete(where={"file": file_key})
 
 
-def main():
+def get_or_create_collection():
+    import logging
+    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+
+    import chromadb
+    from chromadb.utils import embedding_functions
+
+    os.makedirs(VECTOR_DB_DIR, exist_ok=True)
+    client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
+
+    ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+        model_name="all-MiniLM-L6-v2"
+    )
+
+    collection = client.get_or_create_collection(
+        name="project-memory",
+        embedding_function=ef,
+        metadata={"hnsw:space": "cosine"}
+    )
+    return collection
+
+
+def run_incremental_index(collection=None) -> dict:
+    """Run incremental indexing of docs/ files.
+
+    Scans all markdown files, compares hashes against manifest.json,
+    and only re-indexes changed/new files. Removes deleted files from index.
+
+    Args:
+        collection: Optional Chroma collection to reuse.
+                    If None, creates a new one (loads model).
+
+    Returns:
+        dict with keys: indexed, skipped, removed, total_chunks, collection
+    """
+    import logging
+    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+
     os.makedirs(DOCS_DIR, exist_ok=True)
     os.makedirs(FEATURES_DIR, exist_ok=True)
 
@@ -188,17 +225,23 @@ def main():
     current_files_set = set()
 
     md_files = find_markdown_files()
+
+    result = {
+        "indexed": 0,
+        "skipped": 0,
+        "removed": 0,
+        "total_chunks": 0,
+        "total_files": len(md_files),
+        "collection": collection
+    }
+
     if not md_files:
-        print("[indexer] No markdown files found in docs/. Nothing to index.")
         save_manifest(manifest)
-        sys.exit(0)
+        return result
 
-    print(f"[indexer] Found {len(md_files)} markdown files")
-
-    collection = get_or_create_collection()
-    total_chunks = 0
-    indexed_files = 0
-    skipped_files = 0
+    # Use provided collection or create one
+    col = collection if collection is not None else get_or_create_collection()
+    result["collection"] = col
 
     for filepath in md_files:
         rel_path = os.path.relpath(filepath, REPO_ROOT)
@@ -207,14 +250,12 @@ def main():
 
         prev_hash = manifest.get("files", {}).get(rel_path, {}).get("hash")
         if prev_hash == file_hash:
-            print(f"  ⏩ {rel_path} — unchanged, skipped")
-            skipped_files += 1
+            result["skipped"] += 1
             continue
 
-        print(f"  🏗️  {rel_path} — indexing...")
-        chunk_count = index_file(filepath, collection)
-        total_chunks += chunk_count
-        indexed_files += 1
+        chunk_count = index_file(filepath, col)
+        result["total_chunks"] += chunk_count
+        result["indexed"] += 1
 
         if "files" not in manifest:
             manifest["files"] = {}
@@ -226,15 +267,24 @@ def main():
 
     deleted_files = previous_files - current_files_set
     for rel_path in deleted_files:
-        print(f"  🗑️  {rel_path} — removed, deleting from index")
-        remove_file_from_index(rel_path, collection)
+        remove_file_from_index(rel_path, col)
         manifest["files"].pop(rel_path, None)
+        result["removed"] += 1
 
     save_manifest(manifest)
+    return result
 
-    print(f"\n[indexer] Done: {indexed_files} indexed, {skipped_files} skipped, "
-          f"{len(deleted_files)} removed, {total_chunks} total chunks")
-    print(f"[indexer] Chroma collection size: {collection.count()} chunks")
+
+def main():
+    """CLI entry point for indexer."""
+    result = run_incremental_index()
+    col = result["collection"]
+
+    print(f"[indexer] Found {result['total_files']} markdown files")
+    print(f"[indexer] Done: {result['indexed']} indexed, {result['skipped']} skipped, "
+          f"{result['removed']} removed, {result['total_chunks']} total chunks")
+    if col:
+        print(f"[indexer] Chroma collection size: {col.count()} chunks")
     sys.exit(0)
 
 

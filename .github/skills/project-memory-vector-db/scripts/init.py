@@ -7,6 +7,7 @@ Creates:
   - project-memory-vector-db/docs/features/ directory
   - project-memory-vector-db/manifest.json
   - .github/hooks/memory.json (wires SessionStart + Stop hooks)
+  - Adds project-memory MCP server to .vscode/mcp.json
 
 Safe to re-run — existing files are NOT overwritten.
 """
@@ -26,9 +27,18 @@ PROJECT_DIR = os.path.join(REPO_ROOT, "project-memory-vector-db")
 DOCS_DIR = os.path.join(PROJECT_DIR, "docs")
 FEATURES_DIR = os.path.join(DOCS_DIR, "features")
 HOOKS_DIR = os.path.join(REPO_ROOT, ".github", "hooks")
+VSCODE_DIR = os.path.join(REPO_ROOT, ".vscode")
 TEMPLATE_DIR = os.path.join(
     REPO_ROOT, ".github", "skills", "project-memory-vector-db", "scripts", "templates"
 )
+
+MCP_SERVER_ENTRY = {
+    "type": "stdio",
+    "command": "python",
+    "args": [
+        "${workspaceFolder}/.github/skills/project-memory-vector-db/scripts/mcp-server.py"
+    ]
+}
 
 MEMORY_FILES = [
     ("MEMORY.md", "MEMORY.md"),
@@ -113,6 +123,29 @@ def create_hook_config() -> bool:
     return True
 
 
+def create_mcp_config() -> bool:
+    """Add project-memory MCP server to .vscode/mcp.json."""
+    mcp_path = os.path.join(VSCODE_DIR, "mcp.json")
+    os.makedirs(VSCODE_DIR, exist_ok=True)
+
+    config = {"servers": {}}
+    if os.path.exists(mcp_path):
+        with open(mcp_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        if "servers" not in config:
+            config["servers"] = {}
+        if "project-memory" in config["servers"]:
+            print(f"  ⏩ .vscode/mcp.json — 'project-memory' server already registered")
+            return False
+
+    config["servers"]["project-memory"] = MCP_SERVER_ENTRY
+
+    with open(mcp_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+    print(f"  ✅ .vscode/mcp.json — added 'project-memory' MCP server")
+    return True
+
+
 def main():
     print("🚀 Initializing Project Memory Vector DB System...\n")
 
@@ -138,17 +171,21 @@ def main():
     print("\n🔗 Hook configuration:")
     hook_created = create_hook_config()
 
-    total_created = mem_created + docs_created + (1 if manifest_created else 0) + (1 if hook_created else 0)
-    total = 2 + 2 + 1 + 1  # memory files + docs files + manifest + hook
+    print("\n🤖 MCP server configuration:")
+    mcp_created = create_mcp_config()
+
+    total_created = mem_created + docs_created + (1 if manifest_created else 0) + (1 if hook_created else 0) + (1 if mcp_created else 0)
+    total = 2 + 2 + 1 + 1 + 1  # memory files + docs files + manifest + hook + mcp
 
     print(f"\nDone: {total_created} created, {total - total_created} skipped (of {total})")
 
     if total_created > 0:
         print("\n📋 Next steps:")
-        print("   1. Install dependencies: pip install chromadb sentence-transformers")
+        print("   1. Install dependencies: pip install chromadb sentence-transformers mcp[cli]")
         print("   2. Review docs/AGENTS.md and merge rules into your root AGENTS.md")
         print("   3. Run the indexer to build the vector database:")
         print("      python .github/skills/project-memory-vector-db/scripts/indexer.py")
+        print("   4. Restart VS Code to activate the MCP server (in .vscode/mcp.json)")
     else:
         print("\n✅ Everything is already set up.")
 

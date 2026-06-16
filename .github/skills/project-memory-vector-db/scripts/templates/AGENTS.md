@@ -5,19 +5,38 @@ This file defines how the agent should interact with the project memory system.
 Merge these rules into your root AGENTS.md or .github/copilot-instructions.md.
 -->
 
+## MCP Tools Available
+
+This project has an MCP server registered in `.vscode/mcp.json` under the name `project-memory`.
+You can use these tools directly without running shell commands:
+
+| Tool | What it does |
+|------|-------------|
+| `search_memory(query, top_k, threshold)` | Semantic search over all documentation |
+| `get_memory()` | Read current MEMORY.md (working memory) |
+| `update_current_task(task)` | Update the Current Task section |
+| `append_memory_note(note)` | Add a note to MEMORY.md |
+| `clear_completed_tasks()` | Clear the Completed section |
+| `add_learning(title, problem, root_cause, solution, key_takeaway)` | Add a lesson to LEARNING.md |
+| `add_wiki_entry(heading, content, section)` | Add content to WIKI.md |
+| `refresh_index()` | Rebuild Chroma vector index after doc changes |
+| `index_status()` | Check vector index health |
+
+**Recommended workflow:**
+1. At session start, call `get_memory()` to see current working memory.
+2. Use `search_memory()` when you need architectural context or troubleshooting knowledge.
+3. After fixing a bug, use `add_learning()` to document it.
+4. After making a final decision, use `add_wiki_entry()` to record it.
+5. After any doc change, call `refresh_index()` to keep search results current.
+
 ## Context Retrieval Rules
 
 1. **MEMORY.md is always loaded** at session start. Read it immediately for current task context.
-2. **Do NOT read docs/WIKI.md, docs/LEARNING.md, or docs/features/*.md in full.** Use vector search instead.
-3. **When you need knowledge**, use vector search. Two modes available:
-
-   **Quick mode (direct, ~1-2s first query):**
+2. **Do NOT read docs/WIKI.md, docs/LEARNING.md, or docs/features/*.md in full.** Use `search_memory()` instead.
+3. **When you need knowledge**, use `search_memory()` (MCP tool) or fall back to:
    ```bash
    python .github/skills/project-memory-vector-db/scripts/retriever.py --query "<your question>" --top-k 5
    ```
-
-   **Fast mode (server, ~50ms after startup):**
-   If retriever-server.py is running, add `--server`:
    ```bash
    python .github/skills/project-memory-vector-db/scripts/retriever.py --server --query "<your question>" --top-k 5
    ```

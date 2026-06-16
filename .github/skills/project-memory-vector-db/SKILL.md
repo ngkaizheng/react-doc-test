@@ -3,10 +3,10 @@ name: project-memory-vector-db
 description: >-
   Manage the project's long-term memory using vector search over WIKI.md, LEARNING.md, and feature docs.
   Provides hooks-based context injection at session start, automatic Chroma vector indexing at session end,
-  and on-demand semantic retrieval via retriever.py.
+  and on-demand semantic retrieval via MCP tools (search_memory, add_learning, etc.).
   Run `init.py` to bootstrap the files in a new repo.
   Triggers on: project memory, session context, knowledge management, long-term memory,
-  RAG, vector search, semantic search, feature docs, wiki, lessons learned, agent rules.
+  RAG, vector search, semantic search, MCP, feature docs, wiki, lessons learned, agent rules.
 ---
 
 # Project Memory Skill — Vector DB Edition
@@ -42,6 +42,8 @@ repo-root/
 │               ├── retriever.py         ← On-demand: semantic search (CLI or server mode)
 │               ├── retriever_lib.py     ← Shared formatting utilities
 │               ├── retriever-server.py  ← FastAPI server (keeps model warm)
+│               ├── mcp-server.py        ← MCP server (native tools for VS Code agent)
+│               ├── memory.py            ← File operations for MEMORY/WIKI/LEARNING
 │               ├── start-server.ps1     ← Windows launcher for server
 │               └── templates/
 │                   ├── MEMORY.md
@@ -89,7 +91,57 @@ The retriever:
 ### Session Start (SessionStart Hook)
 The `session_start.py` script runs at session start and:
 1. Reads `MEMORY.md` — injects as `systemMessage`
-2. Informs the agent: "Vector search is available via retriever.py"
+2. Informs the agent: "Vector search is available via MCP tools or retriever.py"
+
+## MCP Server
+
+The skill includes a native **MCP server** (`mcp-server.py`) that the VS Code agent can call directly — no shell commands needed.
+
+### Configuration
+The MCP server is registered in `.vscode/mcp.json`:
+```json
+{
+  "servers": {
+    "project-memory": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["${workspaceFolder}/.github/skills/project-memory-vector-db/scripts/mcp-server.py"]
+    }
+  }
+}
+```
+VS Code automatically starts the server on demand and keeps it running for the session.
+
+### Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_memory(query, top_k, threshold)` | Semantic search over all documentation |
+| `get_memory()` | Read current MEMORY.md |
+| `update_current_task(task)` | Update Current Task section |
+| `append_memory_note(note)` | Add a note to MEMORY.md |
+| `clear_completed_tasks()` | Clear Completed section |
+| `add_learning(title, problem, ...)` | Add lesson to LEARNING.md |
+| `add_wiki_entry(heading, content, section)` | Add entry to WIKI.md |
+| `refresh_index()` | Rebuild Chroma index after doc changes |
+| `index_status()` | Check vector DB health |
+
+### Resources
+| Resource | Content |
+|----------|---------|
+| `memory://current` | Current MEMORY.md |
+| `memory://index-status` | Index statistics |
+
+### Dependency
+```bash
+pip install mcp[cli]
+```
+
+### Evolution
+The MCP server is Phase 3 of the project memory evolution:
+- **Phase 1:** `retriever.py` CLI (loads model per query)
+- **Phase 2:** `retriever-server.py` FastAPI (warm model, HTTP)
+- **Phase 3:** `mcp-server.py` MCP (native protocol, no shell)
 
 ## Dependencies
 
@@ -148,6 +200,8 @@ Chroma persistent storage. Auto-managed. Add to `.gitignore`. Delete and re-run 
 | `session_start.py` | Automatically (SessionStart hook) | Reads MEMORY.md → outputs systemMessage |
 | `indexer.py` | Automatically (Stop hook) | Chunks docs → embeds → stores in Chroma |
 | `retriever.py` | On-demand by agent | Semantic search (direct or `--server` mode) |
+| `mcp-server.py` | Auto by VS Code (MCP) | Native tools: search, read, write memory files |
+| `memory.py` | Imported by mcp-server.py | File operations for MEMORY/WIKI/LEARNING |
 | `retriever-server.py` | Manual (persistent process) | FastAPI server, keeps model warm in memory |
 | `start-server.ps1` | Manual (Windows) | Launches retriever-server.py in background |
 | `retriever_lib.py` | Imported by other scripts | Shared formatting utilities |

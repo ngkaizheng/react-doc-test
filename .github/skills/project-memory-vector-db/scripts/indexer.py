@@ -135,6 +135,9 @@ def chunk_markdown(filepath: str) -> list[dict]:
 
 
 def get_or_create_collection():
+    import logging
+    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+
     import chromadb
     from chromadb.utils import embedding_functions
 

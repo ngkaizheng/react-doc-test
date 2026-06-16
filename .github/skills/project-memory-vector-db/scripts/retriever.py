@@ -28,6 +28,9 @@ MANIFEST_PATH = os.path.join(PROJECT_DIR, "manifest.json")
 
 def get_collection():
     """Get the Chroma collection (lazy import)."""
+    import logging
+    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+
     import chromadb
     from chromadb.utils import embedding_functions
 

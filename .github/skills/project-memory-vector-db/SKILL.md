@@ -1,163 +1,81 @@
 ---
 name: project-memory-vector-db
 description: >-
-  Manage the project's long-term memory using vector search over WIKI.md, LEARNING.md, and feature docs.
-  Provides hooks-based context injection at session start, automatic Chroma vector indexing at session end,
-  and on-demand semantic retrieval via MCP tools (search_memory, add_learning, etc.).
-  Run `init.py` to bootstrap the files in a new repo.
-  Triggers on: project memory, session context, knowledge management, long-term memory,
-  RAG, vector search, semantic search, MCP, feature docs, wiki, lessons learned, agent rules,
-  architecture, design, implement, how does, how should, what is, project knowledge,
-  codebase knowledge, feature documentation, coding standards, tech stack.
+  Manages project long-term memory with semantic vector search over WIKI.md, LEARNING.md, and feature docs,
+  plus working memory via MEMORY.md.
+  Provides nine MCP tools (search_memory, get_memory, update_current_task, append_memory_note,
+  clear_completed_tasks, add_learning, add_wiki_entry, refresh_index, index_status) for knowledge retrieval
+  and documentation management.
+  Use when the user asks about project knowledge, architecture, design decisions, standards, bugs, past
+  features, or implementation guidance. Also triggers on: how does, how should, what is, implement,
+  currently working on, add to wiki, save lesson, record decision, project memory, RAG, vector search.
+  Does NOT handle code generation or debugging unrelated to project knowledge.
 ---
 
-# Project Memory Skill — Vector DB Edition
+# Project Memory — Vector DB
 
-This skill implements a **semantic retrieval (RAG) system** for AI agents. It uses **Chroma** (embedded vector database) and **sentence-transformers** to index your project knowledge by meaning, not just keywords. The agent retrieves only the most relevant chunks on-demand, minimizing token waste.
+This skill gives you **semantic retrieval** over the project's documentation (`docs/WIKI.md`, `docs/LEARNING.md`, `docs/features/*.md`) and **working memory** (`MEMORY.md`) via MCP tools.
 
-## File Structure
+## 🔴 MANDATORY: Always Use MCP Tools First
 
-```
-repo-root/
-├── project-memory-vector-db/
-│   ├── MEMORY.md              ← Loaded every session (working memory)
-│   ├── docs/                  ← Human source of truth (markdown files)
-│   │   ├── WIKI.md            ← Architecture, decisions, standards
-│   │   ├── LEARNING.md        ← Lessons learned, bug fixes
-│   │   └── features/          ← Feature documentation (add any .md files)
-│   │       ├── payment.md
-│   │       └── login.md
-│   ├── vector-db/             ← Chroma persistent storage (auto-managed)
-│   └── manifest.json          ← Change tracking (file hashes)
-├── .github/
-│   ├── hooks/
-│   │   └── memory.json        ← Wires SessionStart + Stop hooks
-│   └── skills/
-│       └── project-memory-vector-db/
-│           ├── SKILL.md
-│           ├── plan.md
-│           ├── plan-phase2-server.md
-│           └── scripts/
-│               ├── init.py              ← Bootstrap docs/ + manifest.json
-│               ├── session_start.py     ← Reads MEMORY.md → systemMessage
-│               ├── indexer.py           ← Stop hook: chunk → embed → store in Chroma
-│               ├── retriever.py         ← On-demand: semantic search (CLI or server mode)
-│               ├── retriever_lib.py     ← Shared formatting utilities
-│               ├── retriever-server.py  ← FastAPI server (keeps model warm)
-│               ├── mcp-server.py        ← MCP server (native tools for VS Code agent)
-│               ├── memory.py            ← File operations for MEMORY/WIKI/LEARNING
-│               ├── start-server.ps1     ← Windows launcher for server
-│               └── templates/
-│                   ├── MEMORY.md
-│                   ├── WIKI.md
-│                   ├── LEARNING.md
-│                   └── AGENTS.md
-```
+**Never** read documentation files directly. Always use the MCP tools below.
 
-## How It Works
+When you need project knowledge (architecture, design, features, bugs, standards, decisions):
 
-### Session Start
-A `SessionStart` hook reads `MEMORY.md` and injects it as the agent's system message,
-telling the agent which MCP tools are available and the retrieval priority rule.
+1. **FIRST** → Call `search_memory(query)` — semantic search finds conceptually related content even when keywords don't match.
+2. **SECOND** → If search returns nothing useful, use `grep_search` or `file_search` as fallback.
+3. **Always read from results** → Use `read_file` with the `line_start`/`line_end` from search results to get full context.
 
-### Knowledge Retrieval
-The agent uses MCP tools (primarily `search_memory`) to find relevant knowledge.
-Results include file paths and line numbers so the agent can `read_file` the
-full section. A CLI fallback (`retriever.py`) is available if MCP is unavailable.
+## MCP Tools
 
-### Indexing
-A `Stop` hook runs `indexer.py` at session end. It scans all markdown files in
-`docs/`, chunks by H2/H3 headings, embeds via `all-MiniLM-L6-v2`, and stores
-in Chroma. Only changed files are re-indexed (SHA256 change tracking).
-
-## MCP Server
-
-The skill includes a native **MCP server** (`mcp-server.py`) that the VS Code agent can call directly — no shell commands needed.
-
-### Configuration
-The MCP server is registered in `.vscode/mcp.json`:
-```json
-{
-  "servers": {
-    "project-memory": {
-      "type": "stdio",
-      "command": "python",
-      "args": ["${workspaceFolder}/.github/skills/project-memory-vector-db/scripts/mcp-server.py"]
-    }
-  }
-}
-```
-VS Code automatically starts the server on demand and keeps it running for the session.
-
-### Tools
-
-| Tool | Description |
+| Tool | When to call |
 |------|-------------|
-| `search_memory(query, top_k, threshold)` | Semantic search over all documentation |
-| `get_memory()` | Read current MEMORY.md |
-| `update_current_task(task)` | Update Current Task section |
-| `append_memory_note(note)` | Add a note to MEMORY.md |
-| `clear_completed_tasks()` | Clear Completed section |
-| `add_learning(title, problem, ...)` | Add lesson to LEARNING.md |
-| `add_wiki_entry(heading, content, section)` | Add entry to WIKI.md |
-| `refresh_index()` | Rebuild Chroma index after doc changes |
-| `index_status()` | Check vector DB health |
+| `search_memory(query, top_k, threshold)` | Any knowledge question — this is your primary retrieval tool |
+| `get_memory()` | Session start: read MEMORY.md for current task context |
+| `update_current_task(task)` | When you start/pivot on a task — keeps MEMORY.md current |
+| `append_memory_note(note)` | Record a discovery, blocker, or decision mid-session |
+| `clear_completed_tasks()` | When user agrees to clear MEMORY.md for a new feature |
+| `add_learning(title, problem, root_cause, solution, key_takeaway)` | When you discover a reusable lesson |
+| `add_wiki_entry(heading, content, section)` | When you need to record architecture, decisions, or standards |
+| `refresh_index()` | After adding/modifying docs — rebuilds the vector index |
+| `index_status()` | Check if the vector index is healthy and up to date |
 
-### Resources
-| Resource | Content |
-|----------|---------|
-| `memory://current` | Current MEMORY.md |
-| `memory://index-status` | Index statistics |
+## Workflows
 
-## Dependencies
+### Answer a knowledge question
+1. `search_memory("<the question>")` — let semantic search find relevant docs
+2. `read_file` the matching sections using returned `line_start`/`line_end`
+3. Answer the user with citations
 
-```bash
-pip install chromadb sentence-transformers mcp[cli]
-```
+### Add a lesson to LEARNING.md
+1. `search_memory("<keywords>")` — check if similar knowledge exists
+2. **Exact same issue?** → `add_learning()` with title `YYYY-MM-DD: ...`
+   The tool appends as `### YYYY-MM-DD Update:` under existing sections automatically.
+3. **New issue?** → `add_learning()` — creates new `## YYYY-MM-DD: Title` at top.
 
-- **chromadb** — embedded vector database (no server, on-disk storage)
-- **sentence-transformers** — local embedding model (`all-MiniLM-L6-v2`, 80MB, 384-dim)
-- **mcp[cli]** — MCP Python SDK for native VS Code agent tools
-- Total disk: ~155MB (one-time download on first run)
+### Add wiki content
+1. `add_wiki_entry(heading="Title", content="...", section="SectionName")`
+2. Fits under existing `##`? Appends to that section. No match? Creates new `##` at bottom.
 
-## Getting Started in a New Repo
+### Update working memory
+1. `update_current_task("Implementing feature X")` — rewrite current task
+2. `append_memory_note("Discovered that...")` — record mid-session findings
+3. When task complete, mark in MEMORY.md via `append_memory_note`
 
-```bash
-# From the repo root:
-python .github/skills/project-memory-vector-db/scripts/init.py
-```
+### After editing documentation files
+1. `refresh_index()` — rebuilds the Chroma vector index so new content is searchable
+2. `index_status()` — verify the index is healthy
 
-Then merge or copy the AGENTS.md rules into your root AGENTS.md or .github/copilot-instructions.md.
+## Heading Level Standards
 
-## Maintenance
+Both `##` and `###` are chunk boundaries in the vector index:
 
-### MEMORY.md
-Agent updates in-place during sessions — rewrites `## Current Task`, checks off items. When complete, agent asks to archive to WIKI.md and clear for next feature.
+| File | `##` = | `###` = |
+|------|--------|---------|
+| **WIKI.md** | Major domain | Sub-topic or decision entry |
+| **LEARNING.md** | Distinct lesson | Update to existing lesson |
+| **features/*.md** | Major component | Sub-component or edge case |
 
-### WIKI.md — "Grow Sections, Don't Split Them"
-Append-and-grow only. New info adds to existing `##` sections or creates new `##` at bottom. `###` sub-topics for distinct sub-topics. `## Key Decisions` entries at top.
+## See Also
 
-### LEARNING.md — "Check First, Then Write"
-Reverse-chronological at top. Before writing, agent runs retriever.py to check if similar knowledge exists:
-- **Exact same issue?** → Appends as `### YYYY-MM-DD Update:` under existing section.
-- **New issue?** → New `## YYYY-MM-DD: Title` at top.
-
-### manifest.json
-Tracks SHA256 hashes of all indexed files. Auto-updated by indexer.py. No manual editing needed.
-
-### vector-db/
-Chroma persistent storage. Auto-managed. Add to `.gitignore`. Delete and re-run indexer to rebuild.
-
-## Scripts Reference
-
-| Script | When to Run | What It Does |
-|--------|-------------|-------------|
-| `init.py` | New repo setup | Creates docs/ + templates + manifest.json |
-| `session_start.py` | Automatically (SessionStart hook) | Reads MEMORY.md → outputs systemMessage |
-| `indexer.py` | Automatically (Stop hook) | Chunks docs → embeds → stores in Chroma |
-| `retriever.py` | On-demand by agent | Semantic search (CLI fallback) |
-| `mcp-server.py` | Auto by VS Code (MCP) | Native tools: search, read, write memory files |
-| `memory.py` | Imported by mcp-server.py | File operations for MEMORY/WIKI/LEARNING |
-| `retriever-server.py` | Manual (persistent process) | FastAPI server, keeps model warm in memory |
-| `start-server.ps1` | Manual (Windows) | Launches retriever-server.py in background |
-| `retriever_lib.py` | Imported by other scripts | Shared formatting utilities |
+- [README.md](README.md) — Setup, installation, architecture, CLI/server usage, and script reference.

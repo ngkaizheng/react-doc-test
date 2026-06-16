@@ -10,7 +10,12 @@ import json
 import os
 import sys
 
-REPO_ROOT = os.getcwd()
+REPO_ROOT = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "../../../.."
+    )
+)
 PROJECT_DIR = os.path.join(REPO_ROOT, "project-memory-vector-db")
 MEMORY_PATH = os.path.join(PROJECT_DIR, "MEMORY.md")
 MANIFEST_PATH = os.path.join(PROJECT_DIR, "manifest.json")

@@ -16,7 +16,12 @@ import re
 import sys
 from datetime import datetime, timezone
 
-REPO_ROOT = os.getcwd()
+REPO_ROOT = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "../../../.."
+    )
+)
 PROJECT_DIR = os.path.join(REPO_ROOT, "project-memory-vector-db")
 DOCS_DIR = os.path.join(PROJECT_DIR, "docs")
 FEATURES_DIR = os.path.join(DOCS_DIR, "features")

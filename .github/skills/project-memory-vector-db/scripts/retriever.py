@@ -15,7 +15,12 @@ import json
 import os
 import sys
 
-REPO_ROOT = os.getcwd()
+REPO_ROOT = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "../../../.."
+    )
+)
 PROJECT_DIR = os.path.join(REPO_ROOT, "project-memory-vector-db")
 VECTOR_DB_DIR = os.path.join(PROJECT_DIR, "vector-db")
 MANIFEST_PATH = os.path.join(PROJECT_DIR, "manifest.json")
@@ -94,8 +99,8 @@ def main():
                         help="Search query (natural language)")
     parser.add_argument("--top-k", "-k", type=int, default=5,
                         help="Number of results to return (default: 5)")
-    parser.add_argument("--threshold", "-t", type=float, default=0.0,
-                        help="Minimum similarity threshold (0.0-1.0, default: 0.0)")
+    parser.add_argument("--threshold", "-t", type=float, default=0.3,
+                        help="Minimum similarity threshold (0.0-1.0, default: 0.3)")
     args = parser.parse_args()
 
     # Validate

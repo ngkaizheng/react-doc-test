@@ -1,5 +1,88 @@
 [
   {
+    "name": "Button",
+    "description": "Global uniform brand button, supports loading state and 3 colors.",
+    "examples": [
+      "<Button variant=\"primary\" isLoading={formSubmitting} type=\"submit\">Submit</Button> <Button variant=\"secondary\" onClick={handleCancel}>Cancel</Button>"
+    ],
+    "props": [
+      {
+        "name": "variant",
+        "type": "\"primary\" | \"secondary\" | \"danger\" | undefined",
+        "required": false,
+        "description": "Button color theme"
+      },
+      {
+        "name": "size",
+        "type": "\"sm\" | \"md\" | \"lg\" | undefined",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "isLoading",
+        "type": "boolean | undefined",
+        "required": false,
+        "description": "Show loading spinner"
+      },
+      {
+        "name": "children",
+        "type": "React.ReactNode",
+        "required": false,
+        "description": "React children node"
+      }
+    ]
+  },
+  {
+    "name": "Card",
+    "description": "Shared UI component",
+    "examples": [],
+    "props": [
+      {
+        "name": "title",
+        "type": "string | undefined",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "isHoverable",
+        "type": "boolean | undefined",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "children",
+        "type": "React.ReactNode",
+        "required": true,
+        "description": ""
+      },
+      {
+        "name": "extra",
+        "type": "React.ReactNode",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "LoadingSpinner",
+    "description": "Shared UI component",
+    "examples": [],
+    "props": [
+      {
+        "name": "size",
+        "type": "\"sm\" | \"md\" | \"lg\" | undefined",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "tip",
+        "type": "string | undefined",
+        "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
     "name": "StatusCard",
     "description": "用于展示系统状态的专用卡片，支持高亮模式和状态点击回调。",
     "examples": [
@@ -28,6 +111,31 @@
         "name": "onRetry",
         "type": "(() => void) | undefined",
         "required": false,
+        "description": ""
+      }
+    ]
+  },
+  {
+    "name": "ZhengKaiMagicBox",
+    "description": "Shared UI component",
+    "examples": [],
+    "props": [
+      {
+        "name": "magicSecret",
+        "type": "string",
+        "required": true,
+        "description": ""
+      },
+      {
+        "name": "onExplode",
+        "type": "((power: number) => void) | undefined",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "isEnchanted",
+        "type": "boolean",
+        "required": true,
         "description": ""
       }
     ]

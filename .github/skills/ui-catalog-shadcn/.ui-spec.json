@@ -1,0 +1,35 @@
+[
+  {
+    "name": "StatusCard",
+    "description": "用于展示系统状态的专用卡片，支持高亮模式和状态点击回调。",
+    "examples": [
+      "<StatusCard status=\"success\" title=\"Upload Complete\" onRetry={handleRetry} /> <StatusCard status=\"error\" title=\"Failed\" isHighlighted={true} />"
+    ],
+    "props": [
+      {
+        "name": "status",
+        "type": "\"success\" | \"error\" | \"warning\"",
+        "required": true,
+        "description": ""
+      },
+      {
+        "name": "title",
+        "type": "string",
+        "required": true,
+        "description": ""
+      },
+      {
+        "name": "isHighlighted",
+        "type": "boolean | undefined",
+        "required": false,
+        "description": ""
+      },
+      {
+        "name": "onRetry",
+        "type": "(() => void) | undefined",
+        "required": false,
+        "description": ""
+      }
+    ]
+  }
+]

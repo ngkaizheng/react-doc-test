@@ -78,7 +78,6 @@ The indexer generates `project-memory/index.json` with this structure:
   "wiki": {
     "architecture-overview": {
       "heading": "Architecture Overview",
-      "file": "WIKI.md",
       "line_start": 12,
       "line_end": 45,
       "level": 2,
@@ -88,7 +87,6 @@ The indexer generates `project-memory/index.json` with this structure:
   "learning": {
     "jwt-middleware-fix": {
       "heading": "JWT Middleware Fix",
-      "file": "LEARNING.md",
       "line_start": 8,
       "line_end": 24,
       "level": 2,

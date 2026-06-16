@@ -36,29 +36,38 @@ def slugify(text: str) -> str:
     return text.strip('-')
 
 
+def is_comment_line(line: str) -> bool:
+    """Check if a line is an HTML comment (<!-- ... -->)."""
+    stripped = line.strip()
+    return stripped.startswith("<!--") or stripped.startswith("-->") or "<!--" in stripped
+
+
 def extract_keywords(heading_text: str, next_lines: list[str], max_words: int = 5) -> list[str]:
-    """Extract meaningful keywords from a heading and the following lines."""
-    words = set()
+    """Extract meaningful keywords from a heading (case-deduplicated).
+    Only uses the heading text — ignores following lines to avoid noise from comments."""
+    seen = set()
+    result = []
 
-    # From heading
+    # From heading — lowercase everything for dedup
     heading_words = re.findall(r'[a-zA-Z][a-z0-9]{2,}', heading_text)
-    words.update(w.lower() for w in heading_words if w.lower() not in STOP_WORDS)
+    for w in heading_words:
+        wl = w.lower()
+        if wl not in STOP_WORDS and wl not in seen:
+            seen.add(wl)
+            result.append(wl)
+            if len(result) >= max_words:
+                break
 
-    # From the first 1-2 following lines (for extra context)
+    # From the first 1-2 following lines (skip comment lines)
     for line in next_lines[:2]:
-        line = line.strip()
-        if line.startswith('#'):
+        if line.strip().startswith('#') or is_comment_line(line):
             continue
         line_words = re.findall(r'[a-zA-Z][a-z0-9]{2,}', line)
         for w in line_words:
-            if w.lower() not in STOP_WORDS and len(words) < max_words * 2:
-                words.add(w.lower())
-
-    # Take at most max_words, preferring heading words
-    heading_priority = [w for w in heading_words if w.lower() not in STOP_WORDS]
-    remaining = list(words - set(heading_priority))
-    result = heading_priority[:max_words]
-    result.extend(remaining[:max_words - len(result)])
+            wl = w.lower()
+            if wl not in STOP_WORDS and wl not in seen and len(result) < max_words:
+                seen.add(wl)
+                result.append(wl)
 
     return result if result else [slugify(heading_text).replace('-', ' ')]
 
@@ -95,7 +104,6 @@ def parse_sections(filepath: str, label: str) -> dict:
                 keywords = extract_keywords(current_heading, next_lines)
                 sections[current_key] = {
                     "heading": current_heading,
-                    "file": os.path.basename(filepath),
                     "line_start": start_line,
                     "line_end": end_line,
                     "level": heading_level,
@@ -113,7 +121,6 @@ def parse_sections(filepath: str, label: str) -> dict:
         end_line = len(lines)
         sections[current_key] = {
             "heading": current_heading,
-            "file": os.path.basename(filepath),
             "line_start": start_line,
             "line_end": end_line,
             "level": heading_level,

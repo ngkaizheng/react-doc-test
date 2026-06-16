@@ -3,15 +3,15 @@
     "SessionStart": [
       {
         "type": "command",
-        "command": "python .github\\skills\\project-memory\\scripts\\session_start.py",
+        "command": "python .github\\skills\\project-memory-vector-db\\scripts\\session_start.py",
         "timeout": 10
       }
     ],
     "Stop": [
       {
         "type": "command",
-        "command": "python .github\\skills\\project-memory\\scripts\\indexer.py",
-        "timeout": 15
+        "command": "python .github\\skills\\project-memory-vector-db\\scripts\\indexer.py",
+        "timeout": 30
       }
     ]
   }

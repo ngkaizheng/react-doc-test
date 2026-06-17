@@ -22,7 +22,7 @@ from retriever_lib import (
     format_chroma_results, filter_by_threshold
 )
 from memory import (
-    read_memory, update_section, append_note, clear_completed,
+    read_memory, update_working_memory,
     append_wiki_entry, update_wiki_entry, remove_wiki_entry, expand_wiki_entry,
     append_learning_entry, get_doc_list,
     MEMORY_PATH
@@ -148,34 +148,39 @@ def get_memory() -> str:
 
 
 @mcp.tool()
-def update_current_task(task: str) -> str:
-    """Update the Current Task section in MEMORY.md.
+def update_working_memory(
+    current_task: str = "",
+    next_steps: str = "",
+    blocked: str = "",
+    append_note: str = "",
+    clear_completed: bool = False
+) -> str:
+    """Update sections in MEMORY.md (working memory).
+
+    Each parameter maps to a ## section in MEMORY.md.
+    Pass a value to overwrite that section; leave empty to skip it.
+
+    Examples:
+      - Update current task:          update_working_memory(current_task="Implementing auth")
+      - Update current + add a note:  update_working_memory(current_task="...", append_note="Found a bug in...")
+      - Clear completed section:      update_working_memory(clear_completed=True)
 
     Args:
-        task: Description of the current active task.
+        current_task: Overwrites the ## Current Task section. Empty = skip.
+        next_steps: Overwrites the ## Next Steps section. Empty = skip.
+        blocked: Overwrites the ## Blocked section. Empty = skip.
+        append_note: Appends a note to the bottom of MEMORY.md. Empty = skip.
+        clear_completed: If True, empties the ## Completed section.
     """
-    update_section("Current Task", task)
-    return f"Current Task updated to: {task}"
-
-
-@mcp.tool()
-def append_memory_note(note: str) -> str:
-    """Append a note to MEMORY.md (e.g., a discovery, blocker, or decision).
-
-    Args:
-        note: The note text to append.
-    """
-    append_note(note)
-    return f"Note added to MEMORY.md"
-
-
-@mcp.tool()
-def clear_completed_tasks() -> str:
-    """Clear the Completed section in MEMORY.md.
-    Call this when starting a new feature cycle.
-    """
-    clear_completed()
-    return "Completed section cleared."
+    # Convert empty strings to None so the function knows which were explicitly provided
+    result = update_working_memory(
+        current_task=current_task if current_task else None,
+        next_steps=next_steps if next_steps else None,
+        blocked=blocked if blocked else None,
+        append_note_text=append_note if append_note else None,
+        clear_completed_flag=clear_completed
+    )
+    return result + "\n\nUse get_memory() to see the updated content."
 
 
 @mcp.tool()

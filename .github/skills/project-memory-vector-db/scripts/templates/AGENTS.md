@@ -27,9 +27,7 @@ You can use these tools directly without running shell commands:
 |------|-------------|
 | `search_memory(query, top_k, threshold)` | Semantic search over all documentation |
 | `get_memory()` | Read current MEMORY.md (working memory) |
-| `update_current_task(task)` | Update the Current Task section |
-| `append_memory_note(note)` | Add a note to MEMORY.md |
-| `clear_completed_tasks()` | Clear the Completed section |
+| `update_working_memory(current_task, next_steps, blocked, append_note, clear_completed)` | Update any MEMORY.md section — pass what you want to change, leave the rest empty |
 | `add_learning(title, problem, root_cause, solution, key_takeaway)` | Add a lesson to LEARNING.md |
 | `add_wiki_entry(heading, content, section)` | Add new entry to WIKI.md (skips if duplicate) |
 | `update_wiki_entry(heading, content, section)` | Replace content of an existing WIKI.md entry |

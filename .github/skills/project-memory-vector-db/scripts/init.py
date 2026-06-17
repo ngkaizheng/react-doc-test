@@ -3,6 +3,7 @@ Initialization script for Project Memory Vector DB system.
 
 Creates:
   - project-memory-vector-db/MEMORY.md
+  - project-memory-vector-db/.gitignore (ignores vector-db/)
   - project-memory-vector-db/docs/WIKI.md, LEARNING.md
   - project-memory-vector-db/docs/features/ directory
   - project-memory-vector-db/manifest.json
@@ -149,6 +150,23 @@ def create_mcp_config() -> bool:
     return True
 
 
+def create_gitignore() -> bool:
+    """Create .gitignore for vector-db/ if it doesn't exist."""
+    gitignore_path = os.path.join(PROJECT_DIR, ".gitignore")
+    if os.path.exists(gitignore_path):
+        print(f"  ⏩ .gitignore — already exists, skipped")
+        return False
+
+    content = (
+        "# Chroma vector database (auto-generated binary cache)\n"
+        "vector-db/\n"
+    )
+    with open(gitignore_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    print(f"  ✅ .gitignore — created (ignores vector-db/)")
+    return True
+
+
 def main():
     print("🚀 Initializing Project Memory Vector DB System...\n")
 
@@ -177,8 +195,11 @@ def main():
     print("\n🤖 MCP server configuration:")
     mcp_created = create_mcp_config()
 
-    total_created = mem_created + docs_created + (1 if manifest_created else 0) + (1 if hook_created else 0) + (1 if mcp_created else 0)
-    total = 2 + 2 + 1 + 1 + 1  # memory files + docs files + manifest + hook + mcp
+    print("\n🚫 .gitignore:")
+    gitignore_created = create_gitignore()
+
+    total_created = mem_created + docs_created + (1 if manifest_created else 0) + (1 if hook_created else 0) + (1 if mcp_created else 0) + (1 if gitignore_created else 0)
+    total = 2 + 2 + 1 + 1 + 1 + 1  # memory files + docs files + manifest + hook + mcp + gitignore
 
     print(f"\nDone: {total_created} created, {total - total_created} skipped (of {total})")
 

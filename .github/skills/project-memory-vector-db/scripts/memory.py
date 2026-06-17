@@ -40,12 +40,13 @@ def update_section(section: str, content: str) -> str:
     # Strip code blocks to prevent matching `## ` inside them
     safe_text = _strip_code_blocks(text)
     pattern = re.compile(rf'^(## {re.escape(section)})\s*$.*?(?=^## |\Z)', re.MULTILINE | re.DOTALL)
-    replacement = f"## {section}\n{content}"
+    # Ensure content has trailing newlines so next section doesn't bleed into it
+    replacement = f"## {section}\n{content}\n\n"
 
     if pattern.search(safe_text):
         text = pattern.sub(replacement, text)
     else:
-        text += f"\n\n{replacement}\n"
+        text += f"\n\n## {section}\n{content}\n"
 
     os.makedirs(os.path.dirname(MEMORY_PATH), exist_ok=True)
     with open(MEMORY_PATH, "w", encoding="utf-8") as f:
@@ -66,6 +67,53 @@ def append_note(note: str) -> str:
 def clear_completed() -> str:
     """Clear the Completed section (keep it empty)."""
     return update_section("Completed", "")
+
+
+def update_working_memory(
+    current_task: Optional[str] = None,
+    next_steps: Optional[str] = None,
+    blocked: Optional[str] = None,
+    append_note_text: Optional[str] = None,
+    clear_completed_flag: bool = False
+) -> str:
+    """Update multiple MEMORY.md sections in a single call.
+
+    Args:
+        current_task: If set, replaces the ## Current Task section.
+        next_steps: If set, replaces the ## Next Steps section.
+        blocked: If set, replaces the ## Blocked section.
+        append_note_text: If set, appends a note to the bottom.
+        clear_completed_flag: If True, empties the ## Completed section.
+
+    Returns:
+        A human-readable summary of what was updated.
+    """
+    changes = []
+
+    if current_task is not None:
+        update_section("Current Task", current_task)
+        changes.append("current_task updated")
+
+    if next_steps is not None:
+        update_section("Next Steps", next_steps)
+        changes.append("next_steps updated")
+
+    if blocked is not None:
+        update_section("Blocked", blocked)
+        changes.append("blocked updated")
+
+    if append_note_text is not None:
+        append_note(append_note_text)
+        changes.append("note appended")
+
+    if clear_completed_flag:
+        clear_completed()
+        changes.append("completed cleared")
+
+    if not changes:
+        return "No changes requested — pass at least one parameter."
+
+    return "MEMORY.md: " + "; ".join(changes) + "."
 
 
 # ── WIKI.md operations ────────────────────────────────────────────

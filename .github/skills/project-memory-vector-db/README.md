@@ -44,7 +44,7 @@ graph TD
     CLI --> AGENT
     AGENT -->|add_learning| LEARN
     AGENT -->|add_wiki_entry| WIKI
-    AGENT -->|update_current_task| MEM
+    AGENT -->|update_working_memory| MEM
 ```
 
 ## How It Works
@@ -113,8 +113,7 @@ Once installed, the VS Code agent has access to these tools natively:
 |------|-------------|
 | `search_memory("How does payment retry work?")` | Find relevant knowledge |
 | `get_memory()` | Check current working memory |
-| `update_current_task("Implementing JWT auth")` | Update what you're working on |
-| `append_memory_note("Found a bug in...")` | Save a quick note |
+| `update_working_memory(current_task="Implementing JWT auth", append_note="Found a bug in...")` | Update any MEMORY.md section in one call |
 | `add_learning("JWT Fix", ...)` | Document a bug fix |
 | `add_wiki_entry("Auth Flow", ...)` | Add new entry (skips if duplicate) |
 | `update_wiki_entry("Auth Flow", ..., "Section")` | Replace existing entry content |

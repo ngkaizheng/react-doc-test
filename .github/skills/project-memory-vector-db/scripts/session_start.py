@@ -57,8 +57,7 @@ def format_system_message(memory_content: str, has_index: bool) -> str:
     parts.append("    when you need project knowledge. It finds semantically related content")
     parts.append("    that keyword search misses entirely.")
     parts.append("  • `get_memory()` — Read current MEMORY.md")
-    parts.append("  • `update_current_task(task)` — Update what you're working on")
-    parts.append("  • `append_memory_note(note)` — Save a quick note")
+    parts.append("  • `update_working_memory(current_task, next_steps, blocked, append_note, clear_completed)` — Update any MEMORY.md section")
     parts.append("  • `add_learning(title, problem, root_cause, solution, key_takeaway)` — Document a fix")
     parts.append("  • `add_wiki_entry(heading, content, section)` — Add new entry (skips if duplicate)
   • `update_wiki_entry(heading, content, section)` — Replace an existing entry

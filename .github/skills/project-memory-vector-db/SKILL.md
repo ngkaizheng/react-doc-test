@@ -32,9 +32,7 @@ When you need project knowledge (architecture, design, features, bugs, standards
 |------|-------------|
 | `search_memory(query, top_k, threshold)` | Any knowledge question — this is your primary retrieval tool |
 | `get_memory()` | Session start: read MEMORY.md for current task context |
-| `update_current_task(task)` | When you start/pivot on a task — keeps MEMORY.md current |
-| `append_memory_note(note)` | Record a discovery, blocker, or decision mid-session |
-| `clear_completed_tasks()` | When user agrees to clear MEMORY.md for a new feature |
+| `update_working_memory(current_task, next_steps, blocked, append_note, clear_completed)` | Update any MEMORY.md section — pass what you want to change, leave the rest empty |
 | `add_learning(title, problem, root_cause, solution, key_takeaway)` | When you discover a reusable lesson |
 | `add_wiki_entry(heading, content, section)` | Add new entry to WIKI.md (skips if duplicate — use update/expand instead) |
 | `update_wiki_entry(heading, content, section)` | Replace content of an existing WIKI.md entry |

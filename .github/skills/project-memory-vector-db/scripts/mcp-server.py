@@ -22,7 +22,7 @@ from retriever_lib import (
     format_chroma_results, filter_by_threshold
 )
 from memory import (
-    read_memory, update_working_memory,
+    read_memory, update_working_memory as memory_update_working_memory,
     append_wiki_entry, update_wiki_entry, remove_wiki_entry, expand_wiki_entry,
     append_learning_entry, get_doc_list,
     MEMORY_PATH
@@ -173,7 +173,7 @@ def update_working_memory(
         clear_completed: If True, empties the ## Completed section.
     """
     # Convert empty strings to None so the function knows which were explicitly provided
-    result = update_working_memory(
+    result = memory_update_working_memory(
         current_task=current_task if current_task else None,
         next_steps=next_steps if next_steps else None,
         blocked=blocked if blocked else None,

@@ -1,10 +1,11 @@
 """
 Stop hook script for Project Memory Vector DB system.
 
-Scans docs/ for markdown files, chunks by H2/H3 headings,
-generates embeddings via sentence-transformers, and stores
-in Chroma vector database. Tracks changes via manifest.json
-so only modified files are re-indexed.
+Scans docs/ for markdown files, splits into chunks using a recursive
+size-aware strategy (headings → paragraphs → sentences → hard split),
+generates embeddings via sentence-transformers, and stores in Chroma
+vector database. Tracks changes via manifest.json so only modified
+files are re-indexed.
 
 Runs automatically at the end of every agent session.
 """
@@ -29,6 +30,99 @@ VECTOR_DB_DIR = os.path.join(PROJECT_DIR, "vector-db")
 MANIFEST_PATH = os.path.join(PROJECT_DIR, "manifest.json")
 
 HEADING_RE = re.compile(r'^(#{2,3})\s+(.+)$')
+
+#
+# ── Chunking Configuration ────────────────────────────────────────────
+#
+MAX_TOKENS = 768        # Target max tokens per chunk
+OVERLAP_CHARS = 512     # ~128 tokens overlap at ~4 chars/token
+
+
+def estimate_tokens(text: str) -> int:
+    """Rough token estimation (~4 chars per token for English)."""
+    return max(1, len(text) // 4)
+
+
+def _split_text_recursive(text: str, max_tokens: int = MAX_TOKENS) -> list[str]:
+    """Recursively split text until all pieces fit within max_tokens.
+
+    Splitting priority (toughest → easiest to break):
+      1. Double newlines (paragraphs)
+      2. Single newlines
+      3. Sentence boundaries (. ! ?)
+      4. Hard character split (last resort)
+    """
+    if estimate_tokens(text) <= max_tokens:
+        return [text]
+
+    # Level 1–2: paragraphs (double then single newline)
+    for sep in ['\n\n', '\n']:
+        if sep in text:
+            parts = [p for p in text.split(sep) if p.strip()]
+            if len(parts) > 1:
+                chunks = _combine_to_chunks(parts, sep, max_tokens)
+                result = []
+                for chunk in chunks:
+                    if estimate_tokens(chunk) > max_tokens:
+                        result.extend(_split_text_recursive(chunk, max_tokens))
+                    else:
+                        result.append(chunk)
+                return result
+
+    # Level 3: sentence boundaries
+    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z"])', text)
+    if len(sentences) > 1:
+        chunks = _combine_to_chunks(sentences, ' ', max_tokens)
+        result = []
+        for chunk in chunks:
+            if estimate_tokens(chunk) > max_tokens:
+                result.extend(_split_text_recursive(chunk, max_tokens))
+            else:
+                result.append(chunk)
+        return result
+
+    # Level 4: hard character split
+    max_chars = max_tokens * 4
+    return [text[i:i + max_chars] for i in range(0, len(text), max_chars)]
+
+
+def _combine_to_chunks(parts: list[str], separator: str, max_tokens: int) -> list[str]:
+    """Greedily combine parts into chunks not exceeding max_tokens."""
+    chunks = []
+    current_parts: list[str] = []
+    current_tokens = 0
+
+    for part in parts:
+        part_tokens = estimate_tokens(part)
+        sep_cost = estimate_tokens(separator) if current_parts else 0
+
+        if current_tokens + sep_cost + part_tokens > max_tokens and current_parts:
+            chunks.append(separator.join(current_parts))
+            current_parts = []
+            current_tokens = 0
+
+        current_parts.append(part)
+        current_tokens += part_tokens + (sep_cost if len(current_parts) > 1 else 0)
+
+    if current_parts:
+        chunks.append(separator.join(current_parts))
+
+    return chunks
+
+
+def _apply_overlap(chunks: list[str]) -> list[str]:
+    """Prepend tail of previous chunk to each subsequent chunk for context continuity."""
+    if len(chunks) <= 1:
+        return chunks
+
+    result = [chunks[0]]
+    for i in range(1, len(chunks)):
+        prev = chunks[i - 1]
+        curr = chunks[i]
+        overlap = prev[-OVERLAP_CHARS:] if len(prev) > OVERLAP_CHARS else prev
+        result.append(overlap + '\n' + curr)
+
+    return result
 
 
 def hash_file(filepath: str) -> str:
@@ -74,7 +168,17 @@ def find_markdown_files() -> list[str]:
 
 
 def chunk_markdown(filepath: str) -> list[dict]:
-    """Split a markdown file into chunks by H2 and H3 headings."""
+    """Split a markdown file into chunks using recursive, size-aware strategy.
+
+    Strategy:
+      1. Primary split by H2/H3 headings (semantic document structure)
+      2. If a heading section exceeds MAX_TOKENS (768), recursively split by:
+         a. Paragraphs (double newline, then single newline)
+         b. Sentences (. ! ? boundary)
+         c. Hard character boundary (last resort)
+      3. Add 512-char overlap (~128 tokens) between consecutive sub-chunks
+      4. Preserve heading hierarchy metadata across all fragments
+    """
     with open(filepath, "r", encoding="utf-8") as f:
         lines = f.readlines()
     lines = [line.rstrip('\n\r') for line in lines]
@@ -89,22 +193,37 @@ def chunk_markdown(filepath: str) -> list[dict]:
     parent_heading = None
 
     def flush():
+        nonlocal start_line
         if current_key and current_heading and content_lines:
             text = "\n".join(content_lines).strip()
             if text:
-                chunks.append({
-                    "id": current_key,
-                    "content": text,
-                    "metadata": {
-                        "file": rel_path,
-                        "heading": current_heading,
-                        "parent_heading": parent_heading or "",
-                        "line_start": start_line,
-                        "line_end": start_line + len(content_lines) - 1,
-                        "section_key": current_key,
-                        "level": current_level
-                    }
-                })
+                sub_chunks = _split_text_recursive(text)
+                if len(sub_chunks) > 1:
+                    sub_chunks = _apply_overlap(sub_chunks)
+
+                total_lines = len(content_lines)
+                total_chars = len(text)
+                for i, sub_text in enumerate(sub_chunks):
+                    # Approximate line range for sub-chunk based on char proportion
+                    char_ratio = len(sub_text) / max(total_chars, 1)
+                    sub_line_count = max(1, int(total_lines * char_ratio))
+                    sub_end = start_line + sub_line_count - 1
+
+                    chunk_id = f"{current_key}-{i}" if i > 0 else current_key
+                    chunks.append({
+                        "id": chunk_id,
+                        "content": sub_text,
+                        "metadata": {
+                            "file": rel_path,
+                            "heading": current_heading,
+                            "parent_heading": parent_heading or "",
+                            "line_start": start_line,
+                            "line_end": sub_end,
+                            "section_key": current_key,
+                            "level": current_level
+                        }
+                    })
+                    start_line = sub_end + 1
 
     for idx, line in enumerate(lines, start=1):
         m = HEADING_RE.match(line)
@@ -145,8 +264,32 @@ def get_or_create_collection():
     client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
 
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name="all-MiniLM-L6-v2"
+        model_name="BAAI/bge-m3"
     )
+
+    # Check if collection already exists with matching dimensions
+    target_dim = None
+    try:
+        target_dim = ef._embedding_dim
+    except AttributeError:
+        pass
+
+    existing = client.list_collections()
+    for col in existing:
+        if col.name == "project-memory":
+            existing_dim = col.metadata.get("embedding_dimensions") if col.metadata else None
+            # Only delete if dimensions actually mismatch (model changed)
+            if target_dim is not None and existing_dim is not None and existing_dim != target_dim:
+                try:
+                    client.delete_collection("project-memory")
+                    print(f"[indexer] Deleted old collection (dimensions changed: {existing_dim} -> {target_dim})")
+                    manifest = load_manifest()
+                    manifest["files"] = {}
+                    save_manifest(manifest)
+                    print("[indexer] Reset manifest — will re-index all files")
+                except Exception:
+                    pass
+            break
 
     collection = client.get_or_create_collection(
         name="project-memory",
@@ -157,6 +300,24 @@ def get_or_create_collection():
 
 
 def index_file(filepath: str, collection) -> int:
+    """Index a single markdown file into Chroma.
+
+    First deletes ALL existing chunks for this file (to remove orphaned
+    data from deleted sections), then upserts the new chunks.
+
+    Uses rel_path from chunk metadata (not filepath) as the Chroma filter
+    key for reliable cross-platform matching.
+    """
+    # Derive the rel_path the same way chunk_markdown does
+    rel_path = os.path.relpath(filepath, REPO_ROOT)
+
+    # Delete ALL existing chunks for this file first — this removes
+    # stale/orphaned data from sections that were deleted or renamed.
+    try:
+        collection.delete(where={"file": rel_path})
+    except Exception:
+        pass  # No existing chunks to delete — first time indexing
+
     chunks = chunk_markdown(filepath)
     if not chunks:
         return 0
@@ -176,29 +337,8 @@ def index_file(filepath: str, collection) -> int:
 
 
 def remove_file_from_index(file_key: str, collection):
+    """Remove all chunks for a file from the Chroma index."""
     collection.delete(where={"file": file_key})
-
-
-def get_or_create_collection():
-    import logging
-    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
-
-    import chromadb
-    from chromadb.utils import embedding_functions
-
-    os.makedirs(VECTOR_DB_DIR, exist_ok=True)
-    client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
-
-    ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name="all-MiniLM-L6-v2"
-    )
-
-    collection = client.get_or_create_collection(
-        name="project-memory",
-        embedding_function=ef,
-        metadata={"hnsw:space": "cosine"}
-    )
-    return collection
 
 
 def run_incremental_index(collection=None) -> dict:

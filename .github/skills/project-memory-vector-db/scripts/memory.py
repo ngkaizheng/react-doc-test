@@ -73,11 +73,11 @@ def append_wiki_entry(heading: str, content: str, section: Optional[str] = None)
 
     if section:
         pattern = re.compile(rf'^(## {re.escape(section)})\s*$.*?(?=^## |\Z)', re.MULTILINE | re.DOTALL)
-        entry = f"\n### {heading}\n{content}"
+        entry = f"\n\n### {heading}\n{content}\n\n"
         if pattern.search(text):
             text = pattern.sub(lambda m: m.group(0).rstrip() + entry, text)
         else:
-            text += f"\n\n## {section}\n{entry}\n"
+            text += f"\n\n## {section}\n\n### {heading}\n{content}\n\n"
     else:
         text += f"\n\n## {heading}\n{content}\n"
 

@@ -15,19 +15,28 @@ PROJECT_DIR = os.path.join(REPO_ROOT, "project-memory-vector-db")
 VECTOR_DB_DIR = os.path.join(PROJECT_DIR, "vector-db")
 
 
-def truncate_preview(text: str, max_chars: int = 200) -> str:
-    """Truncate text to a preview length, preserving whole words."""
-    if len(text) <= max_chars:
-        return text
-    truncated = text[:max_chars]
-    last_space = truncated.rfind(' ')
-    if last_space > 0:
-        truncated = truncated[:last_space]
-    return truncated + "..."
-
-
 def format_chroma_results(results) -> list[dict]:
-    """Format Chroma query results into clean JSON structures."""
+    """Format Chroma query results into standard RAG format.
+
+    Uses the industry-standard Document pattern (used by LangChain,
+    LlamaIndex, MLflow, Azure AI Search):
+
+        {
+            "id": "<unique chunk id>",
+            "score": 0.9234,
+            "content": "Full text...",      # Full, untruncated content
+            "metadata": {                     # All metadata nested together
+                "source": "path/to/file.md",
+                "heading": "...",
+                "parent_heading": "...",
+                "line_start": 12,
+                "line_end": 35
+            }
+        }
+
+    This separates content (for LLM prompt injection) from metadata
+    (for citations, filtering, and source tracking).
+    """
     formatted = []
     if not results or not results.get("ids") or not results["ids"]:
         return formatted
@@ -38,7 +47,7 @@ def format_chroma_results(results) -> list[dict]:
 
     for i in range(len(ids_list[0])):
         chunk_id = ids_list[0][i]
-        metadata = results["metadatas"][0][i] if results.get("metadatas") else {}
+        meta = results["metadatas"][0][i] if results.get("metadatas") else {}
         distance = results["distances"][0][i] if results.get("distances") else 0.0
         document = results["documents"][0][i] if results.get("documents") else ""
 
@@ -47,12 +56,14 @@ def format_chroma_results(results) -> list[dict]:
         formatted.append({
             "id": chunk_id,
             "score": score,
-            "file": metadata.get("file", ""),
-            "heading": metadata.get("heading", ""),
-            "parent_heading": metadata.get("parent_heading", ""),
-            "line_start": metadata.get("line_start", 0),
-            "line_end": metadata.get("line_end", 0),
-            "preview": truncate_preview(document, 300)
+            "content": document,  # Full content — LLM needs complete text
+            "metadata": {
+                "source": meta.get("file", ""),
+                "heading": meta.get("heading", ""),
+                "parent_heading": meta.get("parent_heading", ""),
+                "line_start": meta.get("line_start", 0),
+                "line_end": meta.get("line_end", 0)
+            }
         })
 
     return formatted
@@ -65,12 +76,38 @@ def filter_by_threshold(results: list[dict], threshold: float) -> list[dict]:
     return [r for r in results if r["score"] >= threshold]
 
 
+def truncate_preview(text: str, max_chars: int = 200) -> str:
+    """Truncate text to a preview length, preserving whole words.
+
+    Note: This is only used for the CLI preview display.
+    The actual 'content' field always returns the full text.
+    """
+    if len(text) <= max_chars:
+        return text
+    truncated = text[:max_chars]
+    last_space = truncated.rfind(' ')
+    if last_space > 0:
+        truncated = truncated[:last_space]
+    return truncated + "..."
+
+
 def print_json_output(query: str, results: list[dict]):
-    """Print formatted JSON output to stdout."""
+    """Print formatted JSON output to stdout.
+
+    Includes a human-readable 'preview' alongside the full 'content'
+    for CLI display convenience.
+    """
+    # Add preview for CLI readability without modifying original chunks
+    display_results = []
+    for r in results:
+        display = {**r}
+        display["preview"] = truncate_preview(r.get("content", ""), 300)
+        display_results.append(display)
+
     output = {
         "query": query,
         "results_count": len(results),
-        "results": results
+        "results": display_results
     }
     print(json.dumps(output, indent=2, ensure_ascii=False))
 

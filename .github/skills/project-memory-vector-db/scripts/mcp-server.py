@@ -45,7 +45,7 @@ def init_model():
         return
 
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name="all-MiniLM-L6-v2"
+        model_name="BAAI/bge-m3"
     )
     client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
     try:
@@ -90,8 +90,24 @@ def get_index_status() -> str:
 def search_memory(query: str, top_k: int = 5, threshold: float = 0.3) -> str:
     """Semantic search over all project documentation.
 
-    Returns relevant chunks with file path, heading, line range, score, and preview.
-    Use the returned line_start/line_end with read_file to get full content.
+    Returns relevant chunks with full content, similarity score, and
+    nested metadata (source file, heading hierarchy, line range).
+    Use the returned metadata.line_start/metadata.line_end with
+    read_file to get full content from source.
+
+    Format (industry-standard Document pattern):
+      {
+        "id": "<chunk id>",
+        "score": 0.9234,
+        "content": "Full text of the chunk...",
+        "metadata": {
+          "source": "path/to/file.md",
+          "heading": "Section Title",
+          "parent_heading": "Parent Section",
+          "line_start": 12,
+          "line_end": 35
+        }
+      }
 
     Args:
         query: Natural language search query.
@@ -201,9 +217,17 @@ def refresh_index() -> str:
     Call this after adding or modifying documentation to keep search results current.
     Runs in-process — reuses the already-loaded embedding model for maximum speed.
     """
+    global collection
     try:
+        # If collection wasn't initialized (e.g. inspector spawned a fresh process),
+        # try initializing now
+        if collection is None:
+            init_model()
         result = run_incremental_index(collection=collection)
         col = result["collection"]
+        # Update the global collection reference so future search_memory() calls work
+        if col is not None:
+            collection = col
         count = col.count() if col else 0
         return (
             f"Index rebuilt. Chroma now has {count} chunks.\n"

@@ -52,7 +52,7 @@ def init_model():
         sys.exit(1)
 
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name="all-MiniLM-L6-v2"
+        model_name="BAAI/bge-m3"
     )
 
     client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
@@ -65,7 +65,7 @@ def init_model():
         print("Error: No collection found. Run indexer.py first.")
         sys.exit(1)
 
-    print(f"✅ Model loaded (all-MiniLM-L6-v2)")
+    print(f"✅ Model loaded (BAAI/bge-m3)")
     print(f"✅ Chroma connected ({collection.count()} chunks)")
 
 

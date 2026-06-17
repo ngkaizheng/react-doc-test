@@ -49,19 +49,22 @@ DOCS_FILES = [
     ("LEARNING.md", "LEARNING.md"),
 ]
 
+_SKILL_SCRIPTS = os.path.join(
+    REPO_ROOT, ".github", "skills", "project-memory-vector-db", "scripts"
+)
 HOOK_CONFIG = {
     "hooks": {
         "SessionStart": [
             {
                 "type": "command",
-                "command": "python .github\\skills\\project-memory-vector-db\\scripts\\session_start.py",
+                "command": f"python {os.path.join(_SKILL_SCRIPTS, 'session_start.py')}",
                 "timeout": 10
             }
         ],
         "Stop": [
             {
                 "type": "command",
-                "command": "python .github\\skills\\project-memory-vector-db\\scripts\\indexer.py",
+                "command": f"python {os.path.join(_SKILL_SCRIPTS, 'indexer.py')}",
                 "timeout": 30
             }
         ]

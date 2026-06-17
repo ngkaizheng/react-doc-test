@@ -16,8 +16,7 @@ Each ## section becomes an entry in index.json, discoverable by the agent.
 ### Vercel
 - **Purpose:** Hosting platform for the web application and API routes.
 - **Key features used:** Serverless Functions, Edge Functions, and preview deployments.
-- **Vercel Cron Jobs:** Scheduled serverless function invocations for recurring tasks (e.g., daily cleanup, periodic syncs). Configured via `vercel.json` with the `crons` property.
-
+- **Vercel Cron Jobs:** Scheduled serverless function invocations for recurring tasks (e.g., daily cleanup, periodic syncs). Configured via \ercel.json\ with the \crons\ property.
 ### Supabase
 - **Purpose:** Backend-as-a-Service providing PostgreSQL database, authentication, and real-time subscriptions.
 - **Supabase Storage:** Used for file and media asset storage (e.g., user uploads, images, documents). Access controlled via RLS (Row Level Security) policies tied to Supabase Auth.
@@ -33,6 +32,8 @@ Each ## section becomes an entry in index.json, discoverable by the agent.
 ### Stripe
 - **Purpose:** Primary payment gateway for international credit card transactions.
 - **Integration:** Stripe Elements for front-end card collection, Stripe webhooks to Vercel API routes for payment event handling.
+
+
 
 ## Coding Standards
 <!-- Conventions that differ from defaults. Linter rules, naming, file structure. -->

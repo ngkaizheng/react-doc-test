@@ -60,7 +60,10 @@ def format_system_message(memory_content: str, has_index: bool) -> str:
     parts.append("  • `update_current_task(task)` — Update what you're working on")
     parts.append("  • `append_memory_note(note)` — Save a quick note")
     parts.append("  • `add_learning(title, problem, root_cause, solution, key_takeaway)` — Document a fix")
-    parts.append("  • `add_wiki_entry(heading, content, section)` — Record a decision")
+    parts.append("  • `add_wiki_entry(heading, content, section)` — Add new entry (skips if duplicate)
+  • `update_wiki_entry(heading, content, section)` — Replace an existing entry
+  • `expand_wiki_entry(heading, content, section)` — Append to an existing entry
+  • `remove_wiki_entry(heading, section)` — Delete an entry")
     parts.append("  • `refresh_index()` — Sync vector index after doc changes")
     parts.append("  • `index_status()` — Check vector DB health")
     parts.append("")

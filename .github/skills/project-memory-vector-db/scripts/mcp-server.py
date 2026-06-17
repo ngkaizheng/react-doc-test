@@ -23,7 +23,8 @@ from retriever_lib import (
 )
 from memory import (
     read_memory, update_section, append_note, clear_completed,
-    append_wiki_entry, append_learning_entry, get_doc_list,
+    append_wiki_entry, update_wiki_entry, remove_wiki_entry, expand_wiki_entry,
+    append_learning_entry, get_doc_list,
     MEMORY_PATH
 )
 # In-process indexer — no subprocess needed
@@ -36,13 +37,16 @@ from chromadb.utils import embedding_functions
 collection = None
 
 
-def init_model():
-    """Load embedding model and connect to Chroma. Called once at startup."""
+def init_model() -> str:
+    """Load embedding model and connect to Chroma. Called once at startup.
+    Returns a status message indicating success or failure.
+    """
     global collection
 
     if not os.path.exists(VECTOR_DB_DIR):
-        print("Warning: Vector DB not found. Run indexer.py first.", file=sys.stderr)
-        return
+        msg = "Vector DB not found. Run indexer.py first."
+        print(f"Warning: {msg}", file=sys.stderr)
+        return msg
 
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
         model_name="BAAI/bge-m3"
@@ -53,8 +57,12 @@ def init_model():
             name="project-memory",
             embedding_function=ef
         )
+        count = collection.count()
+        return f"Chroma connected ({count} chunks)"
     except ValueError:
-        print("Warning: No collection found. Run indexer.py first.", file=sys.stderr)
+        msg = "No collection found. Run indexer.py first."
+        print(f"Warning: {msg}", file=sys.stderr)
+        return msg
 
 
 # ── FastMCP server ────────────────────────────────────────────────
@@ -197,6 +205,8 @@ def add_wiki_entry(heading: str, content: str, section: str = "") -> str:
 
     If section is provided, the entry is added under that ## section.
     If section is empty, a new ## section is created with the heading.
+    Skips silently if a ### with the same heading already exists (use
+    update_wiki_entry or expand_wiki_entry to modify existing entries).
 
     Args:
         heading: The ### sub-heading for this entry.
@@ -204,11 +214,71 @@ def add_wiki_entry(heading: str, content: str, section: str = "") -> str:
         section: Optional ## section name to add under.
     """
     section_name = section if section else None
-    append_wiki_entry(heading, content, section_name)
-    msg = f"Entry '{heading}' added to WIKI.md"
-    if section:
-        msg += f" under ## {section}"
+    _text, action = append_wiki_entry(heading, content, section_name)
+    if action == "skipped":
+        msg = f"Skipped: '### {heading}' already exists under '## {section}'"
+        msg += ". Use update_wiki_entry or expand_wiki_entry to modify it."
+    elif action == "created":
+        if section:
+            msg = f"Created new section '## {section}' with entry '### {heading}'"
+        else:
+            msg = f"Created new section '## {heading}'"
+    else:
+        msg = f"Entry '### {heading}' added under '## {section}'"
     return msg + ".\n\nRun refresh_index() to update the vector index."
+
+
+@mcp.tool()
+def update_wiki_entry(heading: str, content: str, section: str = "") -> str:
+    """Replace the content of an existing ### entry in WIKI.md.
+
+    Args:
+        heading: The ### sub-heading of the entry to update.
+        content: The new markdown content (replaces existing content entirely).
+        section: The ## section containing the entry.
+    """
+    if not section:
+        return "Error: section is required for update_wiki_entry."
+    _text, action = update_wiki_entry(heading, content, section)
+    if action == "not_found":
+        return f"Entry '### {heading}' not found under '## {section}'."
+    return f"Entry '### {heading}' under '## {section}' has been updated.\n\nRun refresh_index() to update the vector index."
+
+
+@mcp.tool()
+def remove_wiki_entry(heading: str, section: str = "") -> str:
+    """Remove an entire ### entry block from WIKI.md.
+
+    Args:
+        heading: The ### sub-heading of the entry to remove.
+        section: The ## section containing the entry.
+    """
+    if not section:
+        return "Error: section is required for remove_wiki_entry."
+    _text, action = remove_wiki_entry(heading, section)
+    if action == "not_found":
+        return f"Entry '### {heading}' not found under '## {section}'."
+    return f"Entry '### {heading}' removed from '## {section}'.\n\nRun refresh_index() to update the vector index."
+
+
+@mcp.tool()
+def expand_wiki_entry(heading: str, content: str, section: str = "") -> str:
+    """Append additional content to an existing ### entry in WIKI.md.
+
+    The new content is added after the existing entry content (does not
+    replace anything). Use update_wiki_entry to replace entirely.
+
+    Args:
+        heading: The ### sub-heading of the entry to expand.
+        content: The additional markdown content to append.
+        section: The ## section containing the entry.
+    """
+    if not section:
+        return "Error: section is required for expand_wiki_entry."
+    _text, action = expand_wiki_entry(heading, content, section)
+    if action == "not_found":
+        return f"Entry '### {heading}' not found under '## {section}'."
+    return f"Content appended to '### {heading}' under '## {section}'.\n\nRun refresh_index() to update the vector index."
 
 
 @mcp.tool()
@@ -271,12 +341,8 @@ def index_status() -> str:
 
 def main():
     """Start the MCP server. VS Code manages the process via stdio."""
-    init_model()
-    print("Project Memory MCP server starting...", file=sys.stderr)
-    if collection:
-        print(f"Chroma ready: {collection.count()} chunks", file=sys.stderr)
-    else:
-        print("Warning: Chroma not available. Run indexer.py first.", file=sys.stderr)
+    status = init_model()
+    print(f"Project Memory MCP server starting... [{status}]", file=sys.stderr)
 
     # Run with stdio transport — VS Code handles lifecycle
     mcp.run(transport="stdio")

@@ -1,0 +1,8 @@
+# Chroma vector database (auto-generated binary cache)
+vector-db/
+
+# Sentence-transformers model cache (downloaded ~1.1GB on first run)
+# Model is cached in user home directory by default, but if HF_HOME
+# or SENTENCE_TRANSFORMERS_HOME is configured locally, add:
+# .embeddings/
+# model_cache/

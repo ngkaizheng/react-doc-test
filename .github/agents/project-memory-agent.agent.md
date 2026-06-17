@@ -7,7 +7,7 @@ description: >-
   what is, project knowledge, codebase knowledge, feature docs, wiki, lessons learned,
   coding standards, tech stack, decision, bug, fix, refactor.
 user-invocable: true
-tools: [read, edit, 'project-memory/*']
+tools: [vscode, execute, read, agent, edit, search, web, browser, 'project-memory/*', todo]
 ---
 
 # Project Memory Agent Instructions

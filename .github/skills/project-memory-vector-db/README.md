@@ -116,7 +116,10 @@ Once installed, the VS Code agent has access to these tools natively:
 | `update_current_task("Implementing JWT auth")` | Update what you're working on |
 | `append_memory_note("Found a bug in...")` | Save a quick note |
 | `add_learning("JWT Fix", ...)` | Document a bug fix |
-| `add_wiki_entry("Auth Flow", ...)` | Record a decision |
+| `add_wiki_entry("Auth Flow", ...)` | Add new entry (skips if duplicate) |
+| `update_wiki_entry("Auth Flow", ..., "Section")` | Replace existing entry content |
+| `expand_wiki_entry("Auth Flow", ..., "Section")` | Append to existing entry |
+| `remove_wiki_entry("Auth Flow", "Section")` | Delete an entry |
 | `refresh_index()` | Sync index after doc edits |
 | `index_status()` | Check vector DB health |
 

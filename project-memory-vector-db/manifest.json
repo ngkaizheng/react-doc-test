@@ -1,20 +1,20 @@
 {
   "files": {
-    "project-memory-vector-db\\docs\\LEARNING.md": {
+    "project-memory-vector-db/docs/LEARNING.md": {
       "hash": "dfe4862d05c25eeb7a16d9db6810f6a66087c333f3f1960d564c5ccc3942e212",
       "chunks": 4,
-      "indexed_at": "2026-06-17T09:09:53.989302+00:00"
+      "indexed_at": "2026-06-17T09:44:13.049595+00:00"
     },
-    "project-memory-vector-db\\docs\\WIKI.md": {
-      "hash": "f1f7cbcd0d253c6916f8d30bd5a73b06185a704dc402b792977f16b1c5c3159f",
+    "project-memory-vector-db/docs/WIKI.md": {
+      "hash": "574fc66ab1d1beb141843e52c190c8eb310f6f20b1efd25da5ea40db8537830a",
       "chunks": 11,
-      "indexed_at": "2026-06-17T09:35:30.576206+00:00"
+      "indexed_at": "2026-06-17T09:55:36.369977+00:00"
     },
-    "project-memory-vector-db\\docs\\features\\payment.md": {
+    "project-memory-vector-db/docs/features/payment.md": {
       "hash": "fefc12577b93604fdf8ec09bac950856bf38cf815ed22dd759d26df5928bf931",
       "chunks": 1,
-      "indexed_at": "2026-06-17T09:09:58.384989+00:00"
+      "indexed_at": "2026-06-17T09:44:16.966423+00:00"
     }
   },
-  "last_updated": "2026-06-17T09:35:30.576206+00:00"
+  "last_updated": "2026-06-17T09:55:36.377699+00:00"
 }

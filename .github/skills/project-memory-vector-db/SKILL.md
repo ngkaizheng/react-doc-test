@@ -36,7 +36,10 @@ When you need project knowledge (architecture, design, features, bugs, standards
 | `append_memory_note(note)` | Record a discovery, blocker, or decision mid-session |
 | `clear_completed_tasks()` | When user agrees to clear MEMORY.md for a new feature |
 | `add_learning(title, problem, root_cause, solution, key_takeaway)` | When you discover a reusable lesson |
-| `add_wiki_entry(heading, content, section)` | When you need to record architecture, decisions, or standards |
+| `add_wiki_entry(heading, content, section)` | Add new entry to WIKI.md (skips if duplicate — use update/expand instead) |
+| `update_wiki_entry(heading, content, section)` | Replace content of an existing WIKI.md entry |
+| `expand_wiki_entry(heading, content, section)` | Append content to an existing WIKI.md entry |
+| `remove_wiki_entry(heading, section)` | Delete an entire WIKI.md entry block |
 | `refresh_index()` | After adding/modifying docs — rebuilds the vector index |
 | `index_status()` | Check if the vector index is healthy and up to date |
 

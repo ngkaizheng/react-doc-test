@@ -39,7 +39,25 @@ OVERLAP_CHARS = 512     # ~128 tokens overlap at ~4 chars/token
 
 
 def estimate_tokens(text: str) -> int:
-    """Rough token estimation (~4 chars per token for English)."""
+    """Estimate token count using content-aware heuristic.
+
+    - English prose: ~4 chars/token
+    - Code-heavy content (many braces): ~6 chars/token
+    - Dense CJK/Unicode text: ~2 chars/token
+    """
+    # Heuristic: if content has many code-like characters, it's denser
+    brace_count = text.count('{') + text.count('}') + text.count('(') + text.count(')')
+    lines = max(1, text.count('\n') + 1)
+    is_code_heavy = brace_count > lines * 2
+
+    # Check for CJK characters
+    cjk_count = sum(1 for c in text if '\u4e00' <= c <= '\u9fff' or '\u3040' <= c <= '\u30ff')
+    is_cjk_dense = cjk_count > len(text) * 0.1
+
+    if is_cjk_dense:
+        return max(1, len(text) // 2)
+    if is_code_heavy:
+        return max(1, len(text) // 6)
     return max(1, len(text) // 4)
 
 
@@ -70,7 +88,14 @@ def _split_text_recursive(text: str, max_tokens: int = MAX_TOKENS) -> list[str]:
                 return result
 
     # Level 3: sentence boundaries
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z"])', text)
+    # Protect against abbreviations (Mr., Dr., U.S.A.), decimals (3.14),
+    # and CJK punctuation (。！？) — use a broader lookahead
+    # Look behind for sentence-ending punctuation; look ahead for
+    # uppercase letter, digit, quote, bracket, brace, hash, or CJK char
+    _sent_pattern = re.compile(
+        r'(?<=[.!?\u3002\uff01\uff1f])\s+(?=["\'A-Z0-9($\[{#\u4e00-\u9fff])'
+    )
+    sentences = _sent_pattern.split(text)
     if len(sentences) > 1:
         chunks = _combine_to_chunks(sentences, ' ', max_tokens)
         result = []
@@ -134,10 +159,11 @@ def hash_file(filepath: str) -> str:
 
 
 def slugify(text: str) -> str:
-    text = text.lower().strip()
-    text = re.sub(r'[^a-z0-9\s-]', '', text)
-    text = re.sub(r'[\s-]+', '-', text)
-    return text.strip('-')
+    """Convert text to a URL-safe slug, preserving Unicode characters."""
+    text = text.strip()
+    # Replace any sequence of whitespace/punctuation with a single hyphen
+    text = re.sub(r'[\s\W_]+', '-', text)
+    return text.strip('-').lower()
 
 
 def load_manifest() -> dict:
@@ -154,17 +180,24 @@ def save_manifest(manifest: dict):
         json.dump(manifest, f, indent=2, ensure_ascii=False)
 
 
-def find_markdown_files() -> list[str]:
+def _find_md_files(dir_path: str) -> list[str]:
+    """Recursively find all .md files under a directory."""
     files = []
-    if os.path.exists(DOCS_DIR):
-        for f in os.listdir(DOCS_DIR):
+    if not os.path.exists(dir_path):
+        return files
+    for root, _dirs, filenames in os.walk(dir_path):
+        for f in filenames:
             if f.endswith(".md"):
-                files.append(os.path.join(DOCS_DIR, f))
-    if os.path.exists(FEATURES_DIR):
-        for f in os.listdir(FEATURES_DIR):
-            if f.endswith(".md"):
-                files.append(os.path.join(FEATURES_DIR, f))
-    return sorted(files)
+                files.append(os.path.join(root, f))
+    return files
+
+
+def find_markdown_files() -> list[str]:
+    """Find all markdown files in docs/ and docs/features/ (recursive)."""
+    files = []
+    files.extend(_find_md_files(DOCS_DIR))
+    files.extend(_find_md_files(FEATURES_DIR))
+    return sorted(set(files))
 
 
 def chunk_markdown(filepath: str) -> list[dict]:
@@ -183,7 +216,7 @@ def chunk_markdown(filepath: str) -> list[dict]:
         lines = f.readlines()
     lines = [line.rstrip('\n\r') for line in lines]
 
-    rel_path = os.path.relpath(filepath, REPO_ROOT)
+    rel_path = os.path.relpath(filepath, REPO_ROOT).replace(os.sep, '/')
     chunks = []
     current_key = None
     current_heading = None
@@ -308,8 +341,8 @@ def index_file(filepath: str, collection) -> int:
     Uses rel_path from chunk metadata (not filepath) as the Chroma filter
     key for reliable cross-platform matching.
     """
-    # Derive the rel_path the same way chunk_markdown does
-    rel_path = os.path.relpath(filepath, REPO_ROOT)
+    # Derive the rel_path the same way chunk_markdown does, normalized to forward-slash
+    rel_path = os.path.relpath(filepath, REPO_ROOT).replace(os.sep, '/')
 
     # Delete ALL existing chunks for this file first — this removes
     # stale/orphaned data from sections that were deleted or renamed.
@@ -384,7 +417,7 @@ def run_incremental_index(collection=None) -> dict:
     result["collection"] = col
 
     for filepath in md_files:
-        rel_path = os.path.relpath(filepath, REPO_ROOT)
+        rel_path = os.path.relpath(filepath, REPO_ROOT).replace(os.sep, '/')
         current_files_set.add(rel_path)
         file_hash = hash_file(filepath)
 

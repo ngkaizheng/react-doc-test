@@ -33,8 +33,6 @@ Each ## section becomes an entry in index.json, discoverable by the agent.
 - **Purpose:** Primary payment gateway for international credit card transactions.
 - **Integration:** Stripe Elements for front-end card collection, Stripe webhooks to Vercel API routes for payment event handling.
 
-
-
 ## Coding Standards
 <!-- Conventions that differ from defaults. Linter rules, naming, file structure. -->
 
@@ -52,3 +50,4 @@ Each ## section becomes an entry in index.json, discoverable by the agent.
 
 ## User Session Timeout
 Sessions expire after 30 minutes of inactivity. Users are redirected to the login page upon timeout
+

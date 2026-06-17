@@ -23,7 +23,10 @@ from retriever_lib import (
 )
 from memory import (
     read_memory, update_working_memory as memory_update_working_memory,
-    append_wiki_entry, update_wiki_entry, remove_wiki_entry, expand_wiki_entry,
+    append_wiki_entry,
+    update_wiki_entry as memory_update_wiki_entry,
+    remove_wiki_entry as memory_remove_wiki_entry,
+    expand_wiki_entry as memory_expand_wiki_entry,
     append_learning_entry, get_doc_list,
     MEMORY_PATH
 )
@@ -244,7 +247,7 @@ def update_wiki_entry(heading: str, content: str, section: str = "") -> str:
     """
     if not section:
         return "Error: section is required for update_wiki_entry."
-    _text, action = update_wiki_entry(heading, content, section)
+    _text, action = memory_update_wiki_entry(heading, content, section)
     if action == "not_found":
         return f"Entry '### {heading}' not found under '## {section}'."
     return f"Entry '### {heading}' under '## {section}' has been updated.\n\nRun refresh_index() to update the vector index."
@@ -260,7 +263,7 @@ def remove_wiki_entry(heading: str, section: str = "") -> str:
     """
     if not section:
         return "Error: section is required for remove_wiki_entry."
-    _text, action = remove_wiki_entry(heading, section)
+    _text, action = memory_remove_wiki_entry(heading, section)
     if action == "not_found":
         return f"Entry '### {heading}' not found under '## {section}'."
     return f"Entry '### {heading}' removed from '## {section}'.\n\nRun refresh_index() to update the vector index."
@@ -280,7 +283,7 @@ def expand_wiki_entry(heading: str, content: str, section: str = "") -> str:
     """
     if not section:
         return "Error: section is required for expand_wiki_entry."
-    _text, action = expand_wiki_entry(heading, content, section)
+    _text, action = memory_expand_wiki_entry(heading, content, section)
     if action == "not_found":
         return f"Entry '### {heading}' not found under '## {section}'."
     return f"Content appended to '### {heading}' under '## {section}'.\n\nRun refresh_index() to update the vector index."

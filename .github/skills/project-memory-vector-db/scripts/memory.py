@@ -102,13 +102,13 @@ def update_working_memory(
         update_section("Blocked", blocked)
         changes.append("blocked updated")
 
-    if append_note_text is not None:
-        append_note(append_note_text)
-        changes.append("note appended")
-
     if clear_completed_flag:
         clear_completed()
         changes.append("completed cleared")
+
+    if append_note_text is not None:
+        append_note(append_note_text)
+        changes.append("note appended")
 
     if not changes:
         return "No changes requested — pass at least one parameter."

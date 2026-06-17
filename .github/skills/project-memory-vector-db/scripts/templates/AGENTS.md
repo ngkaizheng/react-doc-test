@@ -31,7 +31,10 @@ You can use these tools directly without running shell commands:
 | `append_memory_note(note)` | Add a note to MEMORY.md |
 | `clear_completed_tasks()` | Clear the Completed section |
 | `add_learning(title, problem, root_cause, solution, key_takeaway)` | Add a lesson to LEARNING.md |
-| `add_wiki_entry(heading, content, section)` | Add content to WIKI.md |
+| `add_wiki_entry(heading, content, section)` | Add new entry to WIKI.md (skips if duplicate) |
+| `update_wiki_entry(heading, content, section)` | Replace content of an existing WIKI.md entry |
+| `expand_wiki_entry(heading, content, section)` | Append content to an existing WIKI.md entry |
+| `remove_wiki_entry(heading, section)` | Delete an entire WIKI.md entry block |
 | `refresh_index()` | Rebuild Chroma vector index after doc changes |
 | `index_status()` | Check vector index health |
 

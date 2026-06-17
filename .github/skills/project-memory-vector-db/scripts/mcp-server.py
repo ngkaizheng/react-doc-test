@@ -19,7 +19,7 @@ from mcp.server.fastmcp import FastMCP
 
 from retriever_lib import (
     REPO_ROOT, PROJECT_DIR, VECTOR_DB_DIR,
-    format_chroma_results, filter_by_threshold
+    format_chroma_results, format_m2m_results, filter_by_threshold
 )
 from memory import (
     read_memory, update_working_memory as memory_update_working_memory,
@@ -98,7 +98,7 @@ def get_index_status() -> str:
 # ── Tools ─────────────────────────────────────────────────────────
 
 @mcp.tool()
-def search_memory(query: str, top_k: int = 5, threshold: float = 0.3) -> str:
+def search_memory(query: str, top_k: int = 5, threshold: float = 0.3, format: str = "m2m") -> str:
     """Semantic search over all project documentation.
 
     Returns relevant chunks with full content, similarity score, and
@@ -106,24 +106,16 @@ def search_memory(query: str, top_k: int = 5, threshold: float = 0.3) -> str:
     Use the returned metadata.line_start/metadata.line_end with
     read_file to get full content from source.
 
-    Format (industry-standard Document pattern):
-      {
-        "id": "<chunk id>",
-        "score": 0.9234,
-        "content": "Full text of the chunk...",
-        "metadata": {
-          "source": "path/to/file.md",
-          "heading": "Section Title",
-          "parent_heading": "Parent Section",
-          "line_start": 12,
-          "line_end": 35
-        }
-      }
+    When format="m2m", returns a flat line-delimited string instead of
+    JSON — optimized for AI agent token budgets. Uses pre-computed
+    compact_content from the vector index.
 
     Args:
         query: Natural language search query.
         top_k: Number of results to return (1-50, default: 5).
         threshold: Minimum similarity score (0.0-1.0, default: 0.3).
+        format: Output format — "m2m" (default, flat line-delimited, token-lean)
+                or "json" (explicit fallback, backward-compatible).
     """
     if not collection:
         return json.dumps({"error": "Vector DB not initialized. Run indexer.py first."})
@@ -131,10 +123,17 @@ def search_memory(query: str, top_k: int = 5, threshold: float = 0.3) -> str:
     if top_k < 1 or top_k > 50:
         return json.dumps({"error": "top_k must be between 1 and 50"})
 
+    if format not in ("json", "m2m"):
+        return json.dumps({"error": "format must be 'json' or 'm2m'"})
+
     try:
         results = collection.query(query_texts=[query], n_results=top_k)
         formatted = format_chroma_results(results)
         formatted = filter_by_threshold(formatted, threshold)
+
+        if format == "m2m":
+            return format_m2m_results(query, formatted)
+
         return json.dumps({
             "query": query,
             "results_count": len(formatted),

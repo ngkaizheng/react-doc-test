@@ -17,6 +17,8 @@ import re
 import sys
 from datetime import datetime, timezone
 
+from retriever_lib import m2m_compress
+
 REPO_ROOT = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__),
@@ -362,8 +364,11 @@ def index_file(filepath: str, collection) -> int:
     file_slug = slugify(os.path.basename(filepath).replace('.md', ''))
     for chunk in chunks:
         ids.append(f"{file_slug}-{chunk['id']}")
-        documents.append(chunk["content"])
-        metadatas.append(chunk["metadata"])
+        documents.append(chunk["content"])  # Natural prose → embedding model
+        # Augment metadata with M2M-compressed payload for agent retrieval
+        meta = dict(chunk["metadata"])
+        meta["compact_content"] = m2m_compress(chunk["content"])
+        metadatas.append(meta)
 
     collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
     return len(chunks)

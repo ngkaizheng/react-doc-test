@@ -6,6 +6,7 @@ Used by both retriever.py (CLI) and retriever-server.py (FastAPI).
 
 import json
 import os
+import re
 import sys
 
 REPO_ROOT = os.path.abspath(
@@ -13,6 +14,61 @@ REPO_ROOT = os.path.abspath(
 )
 PROJECT_DIR = os.path.join(REPO_ROOT, "project-memory-vector-db")
 VECTOR_DB_DIR = os.path.join(PROJECT_DIR, "vector-db")
+
+
+def m2m_compress(text: str) -> str:
+    """Strip structural markdown waste without altering semantic content.
+
+    Safe for preserving embedding context — keeps full sentences, bold
+    markers, and bullet syntax. Only removes zero-value overhead.
+
+    Removes:
+        - HTML comments (<!-- ... -->)
+    Collapses:
+        - 3+ consecutive newlines to 2
+        - Leading/trailing whitespace per line
+    """
+    text = re.sub(r'<!--.*?-->', '', text, flags=re.DOTALL)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = '\n'.join(l.strip() for l in text.split('\n'))
+    return text.strip()
+
+
+def format_m2m_results(query: str, results: list[dict]) -> str:
+    """Format search results as flat, line-delimited M2M string.
+
+    Optimized for AI agent consumption — no JSON nesting overhead.
+    Each result is a 5-line block separated by '---'.
+
+    Uses pre-computed compact_content from metadata when available,
+    falling back to full content for non-compacted chunks.
+    """
+    blocks = []
+    for r in results:
+        meta = r.get("metadata", {})
+        text = r.get("compact_content", r.get("content", ""))
+
+        # Breadcrumb PATH: "Parent > Heading" or just "Heading" if top-level
+        parent = meta.get("parent_heading", "")
+        heading = meta.get("heading", "")
+        path = f"{parent} > {heading}" if parent else heading
+
+        # Line range
+        ls = meta.get("line_start", 0)
+        le = meta.get("line_end", 0)
+        lines = f"{ls}-{le}" if ls and le else ""
+
+        block = (
+            f"ID: {r['id']}\n"
+            f"SCORE: {r['score']}\n"
+            f"SRC: {meta.get('source', '')}\n"
+            f"PATH: {path}\n"
+            f"LINES: {lines}\n"
+            f"TEXT: {text}\n"
+            "---"
+        )
+        blocks.append(block)
+    return "\n".join(blocks)
 
 
 def format_chroma_results(results) -> list[dict]:
@@ -53,10 +109,16 @@ def format_chroma_results(results) -> list[dict]:
 
         score = round(1.0 - distance, 4)
 
+        # Forward compact_content from Chroma metadata if present
+        compact = meta.get("compact_content", "")
+        if not compact:
+            compact = ""  # explicit empty for chunks with only HTML comments etc.
+
         formatted.append({
             "id": chunk_id,
             "score": score,
             "content": document,  # Full content — LLM needs complete text
+            "compact_content": compact,  # M2M-lean variant for format="m2m"
             "metadata": {
                 "source": meta.get("file", ""),
                 "heading": meta.get("heading", ""),

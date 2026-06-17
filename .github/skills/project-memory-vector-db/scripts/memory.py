@@ -26,7 +26,7 @@ def read_memory() -> str:
     if os.path.exists(MEMORY_PATH):
         with open(MEMORY_PATH, "r", encoding="utf-8") as f:
             return f.read()
-    return "# Working Memory\n\n## Current Task\n\n## Next Steps\n\n## Blocked\n\n## Completed\n"
+    return "# WM\n\n## [CT]\n\n## [NS]\n\n## [BL]\n\n## [CM]\n"
 
 
 def _strip_code_blocks(text: str) -> str:
@@ -66,7 +66,7 @@ def append_note(note: str) -> str:
 
 def clear_completed() -> str:
     """Clear the Completed section (keep it empty)."""
-    return update_section("Completed", "")
+    return update_section("[CM]", "")
 
 
 def update_working_memory(
@@ -91,15 +91,15 @@ def update_working_memory(
     changes = []
 
     if current_task is not None:
-        update_section("Current Task", current_task)
+        update_section("[CT]", current_task)
         changes.append("current_task updated")
 
     if next_steps is not None:
-        update_section("Next Steps", next_steps)
+        update_section("[NS]", next_steps)
         changes.append("next_steps updated")
 
     if blocked is not None:
-        update_section("Blocked", blocked)
+        update_section("[BL]", blocked)
         changes.append("blocked updated")
 
     if clear_completed_flag:

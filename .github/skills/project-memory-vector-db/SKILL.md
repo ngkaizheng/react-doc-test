@@ -14,58 +14,55 @@ description: >-
 
 # Project Memory — Vector DB
 
-This skill gives you **semantic retrieval** over the project's documentation (`docs/WIKI.md`, `docs/LEARNING.md`, `docs/features/*.md`) and **working memory** (`MEMORY.md`) via MCP tools.
+Semantic retrieval over `docs/WIKI.md`, `docs/LEARNING.md`, `docs/features/*.md` + working memory via MCP tools.
 
-## 🔴 MANDATORY: Always Use MCP Tools First
+## 🔴 Always Use MCP Tools First
 
-**Never** read documentation files directly. Always use the MCP tools below.
+**Never** read docs/ files directly. Always use MCP tools.
 
-When you need project knowledge (architecture, design, features, bugs, standards, decisions):
-
-1. **FIRST** → Call `search_memory(query)` — semantic search finds conceptually related content even when keywords don't match.
-2. **SECOND** → If search returns nothing useful, use `grep_search` or `file_search` as fallback.
-3. **Always read from results** → Use `read_file` with the `line_start`/`line_end` from search results to get full context.
+1. `search_memory(query, top_k=5, threshold=0.3, format="m2m")` — primary retrieval.
+2. If empty → `grep_search` / `file_search` fallback.
+3. Read results via `read_file` using `LINES` range from search output.
 
 ## MCP Tools
 
-| Tool | When to call |
-|------|-------------|
-| `search_memory(query, top_k, threshold)` | Any knowledge question — this is your primary retrieval tool |
-| `get_memory()` | Session start: read MEMORY.md for current task context |
-| `update_working_memory(current_task, next_steps, blocked, append_note, clear_completed)` | Update any MEMORY.md section — pass what you want to change, leave the rest empty |
-| `add_learning(title, problem, root_cause, solution, key_takeaway)` | When you discover a reusable lesson |
-| `add_wiki_entry(heading, content, section)` | Add new entry to WIKI.md (skips if duplicate — use update/expand instead) |
-| `update_wiki_entry(heading, content, section)` | Replace content of an existing WIKI.md entry |
-| `expand_wiki_entry(heading, content, section)` | Append content to an existing WIKI.md entry |
-| `remove_wiki_entry(heading, section)` | Delete an entire WIKI.md entry block |
-| `refresh_index()` | After adding/modifying docs — rebuilds the vector index |
-| `index_status()` | Check if the vector index is healthy and up to date |
+| Tool | Notes |
+|------|-------|
+| `search_memory(query, top_k, threshold, format)` | Default `format="m2m"`. Returns `ID`/`SCORE`/`SRC`/`PATH`/`LINES`/`TEXT` blocks separated by `---`. |
+| `get_memory()` | Read MEMORY.md (sections: `## [CT]`, `## [NS]`, `## [BL]`, `## [CM]`) |
+| `update_working_memory(current_task, next_steps, blocked, append_note, clear_completed)` | Updates bracketed sections by name |
+| `add_learning(title, problem, root_cause, solution, key_takeaway)` | Appends to LEARNING.md top |
+| `add_wiki_entry(heading, content, section)` | Adds `###` under `## section` |
+| `update_wiki_entry(heading, content, section)` | Replaces `###` content |
+| `expand_wiki_entry(heading, content, section)` | Appends to existing `###` |
+| `remove_wiki_entry(heading, section)` | Deletes `###` block |
+| `refresh_index()` | Rebuild vector index after doc changes |
+| `index_status()` | Check index health |
 
 ## Workflows
 
-### Answer a knowledge question
-1. `search_memory("<the question>")` — let semantic search find relevant docs
-2. `read_file` the matching sections using returned `line_start`/`line_end`
-3. Answer the user with citations
+### Answer question
+1. `search_memory("<question>")`
+2. `read_file(src_path, ls, le)` using `SRC:` and `LINES:` from results
+3. Use `PATH:` breadcrumb (e.g., `Tech Stack > Vercel`) for hierarchy context
+4. Answer with citations
 
-### Add a lesson to LEARNING.md
-1. `search_memory("<keywords>")` — check if similar knowledge exists
-2. **Exact same issue?** → `add_learning()` with title `YYYY-MM-DD: ...`
-   The tool appends as `### YYYY-MM-DD Update:` under existing sections automatically.
-3. **New issue?** → `add_learning()` — creates new `## YYYY-MM-DD: Title` at top.
+### Add learning
+1. `search_memory(keywords)` — check for duplicates
+2. Same issue → `add_learning()` (appends `### Update` under existing)
+3. New → `add_learning()` creates `## YYYY-MM-DD: Title` at top
 
 ### Add wiki content
-1. `add_wiki_entry(heading="Title", content="...", section="SectionName")`
-2. Fits under existing `##`? Appends to that section. No match? Creates new `##` at bottom.
+1. `add_wiki_entry(heading="Title", content="...", section="Section")`
+2. Fits under `## section`? Appends. No match? Creates new `##`.
 
 ### Update working memory
-1. `update_current_task("Implementing feature X")` — rewrite current task
-2. `append_memory_note("Discovered that...")` — record mid-session findings
-3. When task complete, mark in MEMORY.md via `append_memory_note`
+- `update_working_memory(current_task="...", next_steps="...", blocked="...")`
+- Sections: `## [CT]`, `## [NS]`, `## [BL]`, `## [CM]`
 
-### After editing documentation files
-1. `refresh_index()` — rebuilds the Chroma vector index so new content is searchable
-2. `index_status()` — verify the index is healthy
+### After editing docs
+1. `refresh_index()`
+2. `index_status()` — confirm healthy
 
 ## Heading Level Standards
 
@@ -79,4 +76,4 @@ Both `##` and `###` are chunk boundaries in the vector index:
 
 ## See Also
 
-- [README.md](README.md) — Setup, installation, architecture, CLI/server usage, and script reference.
+- [README.md](README.md) — Setup, scripts, architecture.

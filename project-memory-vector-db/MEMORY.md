@@ -1,9 +1,12 @@
-# Working Memory
+# WM
 
-## Current Task
+## [CT]
 
-## Next Steps
 
-## Blocked
+## [NS]
 
-## Completed
+
+## [BL]
+
+
+## [CM]

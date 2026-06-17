@@ -33,13 +33,6 @@
 **Key Takeaway:** When using regex to find/replace section content in markdown, always ensure entry templates have \n\n (blank line) both before AND after the entry content. The m.group(0).rstrip() strips all trailing whitespace, so all required newlines must be in the replacement string.
 
 
-<!--
-Record tricky bugs, non-obvious solutions, and edge cases discovered during development.
-Each ## section becomes an entry in index.json, discoverable by the agent.
-
-When you encounter a new lesson, add it at the TOP of this file for recency.
--->
-
 ## YYYY-MM-DD: Title of the Lesson
 
 **Problem:** What went wrong or what needed solving.

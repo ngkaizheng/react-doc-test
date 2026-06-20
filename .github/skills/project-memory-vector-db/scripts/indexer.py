@@ -224,6 +224,28 @@ def load_knowledge_sources() -> dict:
             return default
 
 
+def load_embedding_model_name() -> str:
+    """Read the configured embedding model from knowledge-sources.json.
+
+    Falls back to 'BAAI/bge-m3' if not configured or file is missing.
+    """
+    config = load_knowledge_sources()
+    return config.get("embedding_model", "BAAI/bge-m3")
+
+
+def _find_source_label(filepath: str, sources: list[dict]) -> str:
+    """Find which source label a file belongs to by path prefix matching."""
+    abs_file = os.path.abspath(filepath)
+    for source in sources:
+        src_path = source.get("path", "")
+        abs_src = os.path.abspath(
+            src_path if os.path.isabs(src_path) else os.path.join(REPO_ROOT, src_path)
+        )
+        if abs_file.startswith(abs_src):
+            return source.get("label", "")
+    return ""
+
+
 def find_source_files(sources: list[dict], exclude_patterns: list[str]) -> list[str]:
     """Discover files matching source config patterns, excluding specified globs.
 
@@ -292,7 +314,7 @@ def find_markdown_files() -> list[str]:
     return find_source_files(config.get("sources", []), config.get("exclude_patterns", []))
 
 
-def chunk_markdown(filepath: str) -> list[dict]:
+def chunk_markdown(filepath: str, source_label: str = "") -> list[dict]:
     """Split a markdown file into chunks using recursive, size-aware strategy.
 
     Strategy:
@@ -303,6 +325,11 @@ def chunk_markdown(filepath: str) -> list[dict]:
          c. Hard character boundary (last resort)
       3. Add 512-char overlap (~128 tokens) between consecutive sub-chunks
       4. Preserve heading hierarchy metadata across all fragments
+
+    Args:
+        filepath: Absolute path to the markdown file.
+        source_label: Optional source label (from knowledge-sources.json)
+                      to include in chunk metadata for filtering.
     """
     with open(filepath, "r", encoding="utf-8") as f:
         lines = f.readlines()
@@ -345,7 +372,8 @@ def chunk_markdown(filepath: str) -> list[dict]:
                             "line_start": start_line,
                             "line_end": sub_end,
                             "section_key": current_key,
-                            "level": current_level
+                            "level": current_level,
+                            "source_label": source_label
                         }
                     })
                     start_line = sub_end + 1
@@ -378,7 +406,7 @@ def chunk_markdown(filepath: str) -> list[dict]:
     return chunks
 
 
-def get_or_create_collection():
+def get_or_create_collection(model_name: str = "BAAI/bge-m3"):
     import logging
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 
@@ -389,7 +417,7 @@ def get_or_create_collection():
     client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
 
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name="BAAI/bge-m3"
+        model_name=model_name
     )
 
     # Check if collection already exists with matching dimensions
@@ -424,7 +452,7 @@ def get_or_create_collection():
     return collection
 
 
-def index_file(filepath: str, collection) -> int:
+def index_file(filepath: str, collection, source_label: str = "") -> int:
     """Index a single markdown file into Chroma.
 
     First deletes ALL existing chunks for this file (to remove orphaned
@@ -432,6 +460,12 @@ def index_file(filepath: str, collection) -> int:
 
     Uses rel_path from chunk metadata (not filepath) as the Chroma filter
     key for reliable cross-platform matching.
+
+    Args:
+        filepath: Absolute path to the file to index.
+        collection: Chroma collection to upsert into.
+        source_label: Source label from knowledge-sources.json, stored
+                      in chunk metadata for search filtering.
     """
     # Derive the rel_path the same way chunk_markdown does, normalized to forward-slash
     rel_path = os.path.relpath(filepath, REPO_ROOT).replace(os.sep, '/')
@@ -443,7 +477,7 @@ def index_file(filepath: str, collection) -> int:
     except Exception:
         pass  # No existing chunks to delete — first time indexing
 
-    chunks = chunk_markdown(filepath)
+    chunks = chunk_markdown(filepath, source_label=source_label)
     if not chunks:
         return 0
 
@@ -492,6 +526,8 @@ def run_incremental_index(collection=None) -> dict:
     previous_files = set(manifest.get("files", {}).keys())
     current_files_set = set()
 
+    config = load_knowledge_sources()
+    sources = config.get("sources", [])
     md_files = find_markdown_files()
 
     result = {
@@ -507,8 +543,9 @@ def run_incremental_index(collection=None) -> dict:
         save_manifest(manifest)
         return result
 
-    # Use provided collection or create one
-    col = collection if collection is not None else get_or_create_collection()
+    # Use provided collection or create one (with configured model)
+    model_name = load_embedding_model_name()
+    col = collection if collection is not None else get_or_create_collection(model_name=model_name)
     result["collection"] = col
 
     for filepath in md_files:
@@ -521,7 +558,10 @@ def run_incremental_index(collection=None) -> dict:
             result["skipped"] += 1
             continue
 
-        chunk_count = index_file(filepath, col)
+        # Resolve source label for this file
+        source_label = _find_source_label(filepath, sources)
+
+        chunk_count = index_file(filepath, col, source_label=source_label)
         result["total_chunks"] += chunk_count
         result["indexed"] += 1
 
@@ -530,6 +570,7 @@ def run_incremental_index(collection=None) -> dict:
         manifest["files"][rel_path] = {
             "hash": file_hash,
             "chunks": chunk_count,
+            "source_label": source_label,
             "indexed_at": datetime.now(timezone.utc).isoformat()
         }
 
@@ -543,8 +584,179 @@ def run_incremental_index(collection=None) -> dict:
     return result
 
 
+def validate_config() -> bool:
+    """Validate knowledge-sources.json configuration.
+
+    Checks:
+      - JSON is well-formed
+      - All source paths exist on disk
+      - Patterns are valid (non-empty)
+      - No duplicate labels
+      - embedding_model value is non-empty (if set)
+
+    Returns True if valid, prints issues and returns False otherwise.
+    """
+    config = load_knowledge_sources()
+    sources = config.get("sources", [])
+    exclude = config.get("exclude_patterns", [])
+    errors = []
+
+    # Version check
+    if config.get("version") != 1:
+        errors.append(f"Unsupported version: {config.get('version')} (expected 1)")
+
+    # Embedding model
+    model = config.get("embedding_model", "")
+    if model and not isinstance(model, str):
+        errors.append("'embedding_model' must be a string")
+
+    # Sources
+    labels_seen = set()
+    for i, src in enumerate(sources):
+        src_path = src.get("path", "")
+        label = src.get("label", "")
+        patterns = src.get("patterns", [])
+
+        if not src_path:
+            errors.append(f"Source #{i}: missing 'path'")
+        else:
+            abs_path = src_path if os.path.isabs(src_path) else os.path.join(REPO_ROOT, src_path)
+            if not os.path.exists(abs_path):
+                errors.append(f"Source '{label or src_path}': path not found -> {abs_path}")
+
+        if not label:
+            errors.append(f"Source #{i} ('{src_path}'): missing 'label'")
+        elif label in labels_seen:
+            errors.append(f"Duplicate label: '{label}'")
+        else:
+            labels_seen.add(label)
+
+        if not patterns:
+            errors.append(f"Source '{label or src_path}': empty 'patterns'")
+        for pat in patterns:
+            if not pat or not pat.strip():
+                errors.append(f"Source '{label or src_path}': empty pattern in list")
+
+    # Exclude patterns
+    for pat in exclude:
+        if not pat or not pat.strip():
+            errors.append("Empty pattern in 'exclude_patterns'")
+
+    if errors:
+        print("[validate] ❌ Configuration has errors:")
+        for err in errors:
+            print(f"  • {err}")
+        return False
+    else:
+        print(f"[validate] ✅ Valid: {len(sources)} source(s), {len(exclude)} exclude pattern(s)")
+        for src in sources:
+            print(f"  • {src['label']}: {src['path']} ({', '.join(src.get('patterns', []))})")
+        return True
+
+
+def watch_mode():
+    """Watch mode: poll for file changes and auto-re-index after a quiet period.
+
+    When a file change is detected, waits for `debounce_seconds` of inactivity
+    before triggering a re-index. This prevents thrashing on auto-save.
+
+    Configured via knowledge-sources.json:
+      { "watch": { "enabled": true, "debounce_seconds": 30 } }
+    """
+    import time
+
+    config = load_knowledge_sources()
+    watch_cfg = config.get("watch", {})
+    debounce = max(5, watch_cfg.get("debounce_seconds", 30))
+
+    print(f"[watcher] Starting watch mode (debounce={debounce}s, poll=1s)")
+    print(f"[watcher] Press Ctrl+C to stop.")
+
+    last_hashes: dict[str, str] = {}
+    sources = config.get("sources", [])
+    exclude = config.get("exclude_patterns", [])
+
+    try:
+        while True:
+            time.sleep(1)
+
+            files = find_source_files(sources, exclude)
+            current_files = set(files)
+
+            # Check for changes (new/modified)
+            dirty = False
+            current_hashes: dict[str, str] = {}
+            for f in files:
+                h = hash_file(f)
+                current_hashes[f] = h
+                if last_hashes.get(f) != h:
+                    dirty = True
+
+            # Check for deletions
+            for f in last_hashes:
+                if f not in current_files:
+                    dirty = True
+
+            if not dirty:
+                last_hashes = current_hashes
+                continue
+
+            # Debounce: wait for quiet period
+            quiet_at = time.time() + debounce
+            while time.time() < quiet_at:
+                time.sleep(0.5)
+                # Re-scan for any new changes that reset the timer
+                fresh_files = find_source_files(sources, exclude)
+                fresh_hashes: dict[str, str] = {}
+                still_dirty = False
+                for f in fresh_files:
+                    h = hash_file(f)
+                    fresh_hashes[f] = h
+                    if current_hashes.get(f) != h:
+                        still_dirty = True
+                        quiet_at = time.time() + debounce
+                        current_hashes = fresh_hashes
+
+                if not still_dirty:
+                    # Even if no new hash changes, check deletions
+                    for f in current_hashes:
+                        if f not in set(fresh_files):
+                            still_dirty = True
+                            quiet_at = time.time() + debounce
+                            current_hashes = fresh_hashes
+
+            print(f"[watcher] No changes for {debounce}s, re-indexing...")
+            run_incremental_index()
+            last_hashes = current_hashes
+
+    except KeyboardInterrupt:
+        print(f"\n[watcher] Stopped.")
+
+
 def main():
     """CLI entry point for indexer."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Project Memory Vector DB indexer"
+    )
+    parser.add_argument("--validate", action="store_true",
+                        help="Validate knowledge-sources.json config and exit")
+    parser.add_argument("--watch", action="store_true",
+                        help="Watch mode: auto re-index on file changes")
+    parser.add_argument("--debounce", type=int, default=None,
+                        help="Debounce seconds for watch mode (overrides config)")
+    args = parser.parse_args()
+
+    if args.validate:
+        valid = validate_config()
+        sys.exit(0 if valid else 1)
+
+    if args.watch:
+        watch_mode()
+        return  # watch_mode loops forever, only reached on KeyboardInterrupt
+
+    # Normal one-shot indexing
     config = load_knowledge_sources()
     sources = config.get("sources", [])
     labels = [s.get("label", s.get("path", "?")) for s in sources]

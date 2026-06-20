@@ -19,7 +19,8 @@ from mcp.server.fastmcp import FastMCP
 
 from retriever_lib import (
     REPO_ROOT, PROJECT_DIR, VECTOR_DB_DIR,
-    format_chroma_results, format_m2m_results, filter_by_threshold
+    format_chroma_results, format_m2m_results, filter_by_threshold,
+    keyword_boost
 )
 from memory import (
     read_memory, update_working_memory as memory_update_working_memory,
@@ -31,7 +32,7 @@ from memory import (
     MEMORY_PATH
 )
 # In-process indexer — no subprocess needed
-from indexer import run_incremental_index
+from indexer import run_incremental_index, load_knowledge_sources, load_embedding_model_name
 
 # ── Chroma + model: loaded once at startup ────────────────────────
 import chromadb
@@ -42,6 +43,8 @@ collection = None
 
 def init_model() -> str:
     """Load embedding model and connect to Chroma. Called once at startup.
+    Reads the model name from knowledge-sources.json (configurable).
+
     Returns a status message indicating success or failure.
     """
     global collection
@@ -51,8 +54,9 @@ def init_model() -> str:
         print(f"Warning: {msg}", file=sys.stderr)
         return msg
 
+    model_name = load_embedding_model_name()
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name="BAAI/bge-m3"
+        model_name=model_name
     )
     client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
     try:
@@ -61,7 +65,7 @@ def init_model() -> str:
             embedding_function=ef
         )
         count = collection.count()
-        return f"Chroma connected ({count} chunks)"
+        return f"Chroma connected ({count} chunks) [model={model_name}]"
     except ValueError:
         msg = "No collection found. Run indexer.py first."
         print(f"Warning: {msg}", file=sys.stderr)
@@ -98,24 +102,42 @@ def get_index_status() -> str:
 # ── Tools ─────────────────────────────────────────────────────────
 
 @mcp.tool()
-def search_memory(query: str, top_k: int = 5, threshold: float = 0.3, format: str = "m2m") -> str:
-    """Semantic search over all project documentation.
+def search_memory(
+    query: str,
+    top_k: int = 5,
+    threshold: float = 0.3,
+    format: str = "m2m",
+    source: str = "",
+    keywords: str = ""
+) -> str:
+    """Semantic search over project documentation with optional source filtering and hybrid keyword boost.
 
     Returns relevant chunks with full content, similarity score, and
     nested metadata (source file, heading hierarchy, line range).
-    Use the returned metadata.line_start/metadata.line_end with
-    read_file to get full content from source.
+    Use the returned SRC:/LINES: to read_file for complete context.
 
     When format="m2m", returns a flat line-delimited string instead of
-    JSON — optimized for AI agent token budgets. Uses pre-computed
-    compact_content from the vector index.
+    JSON — optimized for AI agent token budgets.
+
+    HYBRID SEARCH: When 'keywords' is provided, chunks containing those
+    keywords get a score boost, so exact matches rank higher while
+    semantic neighbors are still returned. Use this when you know
+    specific terms (function names, error messages, config keys).
+
+    SOURCE FILTER: When 'source' is provided, results are narrowed to
+    only chunks from that knowledge source label (e.g., "Specifications",
+    "Core Knowledge"). Run index_status() or check session context to
+    see available source labels.
 
     Args:
         query: Natural language search query.
         top_k: Number of results to return (1-50, default: 5).
         threshold: Minimum similarity score (0.0-1.0, default: 0.3).
-        format: Output format — "m2m" (default, flat line-delimited, token-lean)
-                or "json" (explicit fallback, backward-compatible).
+        format: Output format — "m2m" (default) or "json".
+        source: Optional source label to filter by (e.g., "Core Knowledge").
+                Uses the label from knowledge-sources.json.
+        keywords: Optional keywords for hybrid boost — chunks containing
+                  these words get ranked higher.
     """
     if not collection:
         return json.dumps({"error": "Vector DB not initialized. Run indexer.py first."})
@@ -127,9 +149,28 @@ def search_memory(query: str, top_k: int = 5, threshold: float = 0.3, format: st
         return json.dumps({"error": "format must be 'json' or 'm2m'"})
 
     try:
-        results = collection.query(query_texts=[query], n_results=top_k)
+        # Build Chroma where filter for source label
+        where_filter = None
+        if source:
+            where_filter = {"source_label": source}
+
+        # Request extra results so hybrid re-ranking has room
+        fetch_k = top_k * 3 if keywords else top_k
+        results = collection.query(
+            query_texts=[query],
+            n_results=fetch_k,
+            where=where_filter
+        )
         formatted = format_chroma_results(results)
         formatted = filter_by_threshold(formatted, threshold)
+
+        # Hybrid keyword boost: re-rank with keyword match score
+        if keywords:
+            for r in formatted:
+                boost = keyword_boost(r.get("content", ""), keywords)
+                r["score"] = round(min(1.0, r["score"] + boost), 4)
+            formatted.sort(key=lambda x: x["score"], reverse=True)
+            formatted = formatted[:top_k]
 
         if format == "m2m":
             return format_m2m_results(query, formatted)
@@ -340,6 +381,71 @@ def index_status() -> str:
             "total_chunks": count,
             "source_files": sorted(files) if files else []
         }, indent=2)
+    except Exception as e:
+        return json.dumps({"status": "error", "error": str(e)})
+
+
+@mcp.tool()
+def memory_stats() -> str:
+    """Get detailed statistics about the vector index.
+
+    Returns per-source chunk counts, file counts, total chunks,
+    embedding model, and last indexed timestamp.
+
+    Useful for understanding what knowledge is available and
+    verifying that sources are properly indexed.
+    """
+    if not collection:
+        return json.dumps({"status": "not_initialized"})
+
+    try:
+        count = collection.count()
+        all_results = collection.get(limit=10000)
+
+        # Aggregate by source_label
+        sources_map: dict[str, dict] = {}
+        files_set: set[str] = set()
+        if all_results and all_results.get("metadatas"):
+            for m in all_results["metadatas"]:
+                label = m.get("source_label", "unknown")
+                f = m.get("file", "")
+                files_set.add(f)
+                if label not in sources_map:
+                    sources_map[label] = {"chunks": 0, "files": set()}
+                sources_map[label]["chunks"] += 1
+                if f:
+                    sources_map[label]["files"].add(f)
+
+        config = load_knowledge_sources()
+        model = load_embedding_model_name()
+
+        stats = {
+            "status": "ok",
+            "total_chunks": count,
+            "total_files": len(files_set),
+            "embedding_model": model,
+            "last_indexed": None,
+            "sources": {}
+        }
+
+        # Check manifest for last_indexed
+        manifest_path = os.path.join(PROJECT_DIR, "manifest.json")
+        if os.path.exists(manifest_path):
+            try:
+                with open(manifest_path) as f:
+                    mf = json.load(f)
+                stats["last_indexed"] = mf.get("last_updated")
+            except Exception:
+                pass
+
+        # Per-source breakdown
+        for label, data in sorted(sources_map.items()):
+            stats["sources"][label] = {
+                "chunks": data["chunks"],
+                "files": len(data["files"])
+            }
+
+        return json.dumps(stats, indent=2)
     except Exception as e:
         return json.dumps({"status": "error", "error": str(e)})
 

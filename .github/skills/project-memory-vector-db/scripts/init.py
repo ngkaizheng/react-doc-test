@@ -169,6 +169,7 @@ def create_gitignore() -> bool:
 
 KNOWLEDGE_SOURCES_TEMPLATE = {
     "version": 1,
+    "embedding_model": "BAAI/bge-m3",
     "sources": [
         {
             "path": "project-memory-vector-db/docs",
@@ -187,10 +188,12 @@ KNOWLEDGE_SOURCES_TEMPLATE = {
     ],
     "_instructions": {
         "description": "Configuration file for the Project Memory Vector DB system. Add/edit source entries to control which files get indexed into the vector database.",
+        "embedding_model": "SentenceTransformer model name (e.g. 'BAAI/bge-m3', 'BAAI/bge-small-en-v1.5'). Affects accuracy vs speed/memory.",
+        "watch": "{ 'enabled': true/false, 'debounce_seconds': 30 } — watch mode auto re-indexes on file changes.",
         "sources_path": "Relative path from repo root (or absolute path). Directories and single files are both supported.",
         "sources_recursive": "If true, walks subdirectories. If false, only scans the top-level directory.",
         "sources_patterns": "Glob patterns to match filenames (e.g. ['*.md'], ['*.ts', '*.tsx']).",
-        "sources_label": "Human-readable label for this source, shown in agent context.",
+        "sources_label": "Human-readable label for this source, shown in agent context and used for search source filtering.",
         "sources_description": "Brief description of what this source contains.",
         "exclude_patterns": "Glob patterns for paths to always skip (e.g. node_modules, build output)."
     }
@@ -210,7 +213,21 @@ def create_knowledge_sources() -> bool:
     return True
 
 
+def validate():
+    """Validate knowledge-sources.json by delegating to indexer's validate_config."""
+    sys.path.insert(0, os.path.join(
+        REPO_ROOT, ".github", "skills", "project-memory-vector-db", "scripts"
+    ))
+    from indexer import validate_config
+    valid = validate_config()
+    sys.exit(0 if valid else 1)
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--validate":
+        validate()
+        return
+
     print("🚀 Initializing Project Memory Vector DB System...\n")
 
     print("📁 Root files:")

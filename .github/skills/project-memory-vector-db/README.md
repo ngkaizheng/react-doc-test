@@ -116,6 +116,39 @@ Just edit `project-memory-vector-db/knowledge-sources.json` and add a new entry,
 python .github/skills/project-memory-vector-db/scripts/indexer.py
 ```
 
+### Embedding model
+
+The `embedding_model` field sets the SentenceTransformer model for generating embeddings:
+
+| Model | Params | Dim | Speed | Quality |
+|-------|--------|-----|-------|---------|
+| `BAAI/bge-m3` (default) | 567M | 1024 | Moderate | Best |
+| `BAAI/bge-small-en-v1.5` | 33M | 384 | Fast | Good |
+| `BAAI/bge-base-en-v1.5` | 110M | 768 | Balanced | Better |
+
+Change the model at any time — the indexer detects dimension changes and rebuilds automatically.
+
+### Watch mode
+
+Auto re-index when files change, useful during development:
+
+```bash
+# Start watching
+python .github/skills/.../indexer.py --watch
+
+# Custom debounce (seconds)
+python .github/skills/.../indexer.py --watch --debounce 60
+```
+
+Or configure in `knowledge-sources.json`:
+```json
+{
+  "watch": { "debounce_seconds": 30 }
+}
+```
+
+Every file change resets a timer. Re-indexing fires only after no changes for the debounce period — preventing thrashing on auto-save.
+
 ### Excluding files
 
 The `exclude_patterns` array supports glob patterns for paths to always skip. Useful for build artifacts, generated code, and dependency directories.
@@ -180,7 +213,10 @@ Once installed, the VS Code agent has access to these tools natively:
 
 | Tool | When to use |
 |------|-------------|
-| `search_memory("How does payment retry work?")` | Find relevant knowledge |
+| `search_memory("How does payment retry work?")` | Find relevant knowledge (semantic search) |
+| `search_memory("auth", source="Specifications")` | Narrow search to a specific source label |
+| `search_memory("RLS", keywords="row_level_security")` | Hybrid search — exact terms rank higher |
+| `memory_stats()` | See per-source chunk counts, model, health |
 | `get_memory()` | Check current working memory |
 | `update_working_memory(current_task="Implementing JWT auth", append_note="Found a bug in...")` | Update any MEMORY.md section in one call |
 | `add_learning("JWT Fix", ...)` | Document a bug fix |
@@ -198,10 +234,20 @@ Once installed, the VS Code agent has access to these tools natively:
 python .github/skills/project-memory-vector-db/scripts/retriever.py \
   --query "How does payment retry work?" --top-k 5
 
+# With source filter and keyword boost
+python .github/skills/project-memory-vector-db/scripts/retriever.py \
+  --query "auth" --source "Specifications" --keywords "JWT"
+
 # Server mode (keeps model warm, ~50ms)
 python .github/skills/project-memory-vector-db/scripts/retriever-server.py --port 8000
 python .github/skills/project-memory-vector-db/scripts/retriever.py \
   --server --query "How does payment retry work?" --top-k 5
+
+# Validate config
+python .github/skills/project-memory-vector-db/scripts/indexer.py --validate
+
+# Watch mode (auto re-index on file changes)
+python .github/skills/project-memory-vector-db/scripts/indexer.py --watch
 ```
 
 ## MCP Server Lifecycle

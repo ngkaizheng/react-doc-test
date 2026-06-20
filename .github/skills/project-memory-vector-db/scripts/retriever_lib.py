@@ -16,6 +16,30 @@ PROJECT_DIR = os.path.join(REPO_ROOT, "project-memory-vector-db")
 VECTOR_DB_DIR = os.path.join(PROJECT_DIR, "vector-db")
 
 
+def keyword_boost(text: str, keywords: str) -> float:
+    """Compute a keyword match boost for hybrid vector + keyword search.
+
+    Counts occurrences of the keyword phrase in the text and returns
+    a boost value (0.0–0.3) that can be added to the similarity score.
+    This makes exact keyword matches rank higher while still surfacing
+    semantically related content.
+
+    Args:
+        text: The full document text to search within.
+        keywords: The keyword phrase to look for (case-insensitive).
+
+    Returns:
+        A float between 0.0 and 0.3 indicating the boost amount.
+    """
+    if not keywords:
+        return 0.0
+    text_lower = text.lower()
+    kw_lower = keywords.lower()
+    count = text_lower.count(kw_lower)
+    # Boost up to 0.3, diminishing returns at high counts
+    return min(0.3, count * 0.05)
+
+
 def m2m_compress(text: str) -> str:
     """Strip structural markdown waste without altering semantic content.
 
@@ -58,10 +82,14 @@ def format_m2m_results(query: str, results: list[dict]) -> str:
         le = meta.get("line_end", 0)
         lines = f"{ls}-{le}" if ls and le else ""
 
+        source_label = meta.get("source_label", "")
+        sl = f"SOURCE: {source_label}\n" if source_label else ""
+
         block = (
             f"ID: {r['id']}\n"
             f"SCORE: {r['score']}\n"
             f"SRC: {meta.get('source', '')}\n"
+            f"{sl}"
             f"PATH: {path}\n"
             f"LINES: {lines}\n"
             f"TEXT: {text}\n"
@@ -124,7 +152,8 @@ def format_chroma_results(results) -> list[dict]:
                 "heading": meta.get("heading", ""),
                 "parent_heading": meta.get("parent_heading", ""),
                 "line_start": meta.get("line_start", 0),
-                "line_end": meta.get("line_end", 0)
+                "line_end": meta.get("line_end", 0),
+                "source_label": meta.get("source_label", "")
             }
         })
 

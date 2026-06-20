@@ -27,7 +27,8 @@ Semantic retrieval + working memory.
 
 | Tool | Contract |
 |------|----------|
-| `search_memory(query, top_k, threshold, format)` | `query`: natural language. `top_k`: 1-50 (default 5). `threshold`: 0.0-1.0 (default 0.3). `format`: `"m2m"` (default) or `"json"`. Returns `ID`/`SCORE`/`SRC`/`PATH`/`LINES`/`TEXT` blocks. |
+| `search_memory(query, top_k, threshold, format, source, keywords)` | `query`: natural language. `top_k`: 1-50 (default 5). `threshold`: 0.0-1.0 (default 0.3). `format`: `"m2m"` (default) or `"json"`. `source`: filter by source label (e.g., `"Core Knowledge"`). `keywords`: hybrid boost — exact matches rank higher. Returns `ID`/`SCORE`/`SRC`/`SOURCE`/`PATH`/`LINES`/`TEXT` blocks. |
+| `memory_stats()` | Returns per-source chunk/file counts, embedding model, last indexed. Use to check what knowledge is available. |
 | `get_memory()` | Reads MEMORY.md. Sections: `## [CT]`, `## [NS]`, `## [BL]`, `## [CM]`. |
 | `update_working_memory(current_task, next_steps, blocked, append_note, clear_completed)` | Each param maps to a named section. Empty = skip. |
 | `add_learning(title, problem, root_cause, solution, key_takeaway)` | Appends to LEARNING.md top. |
@@ -45,6 +46,12 @@ Semantic retrieval + working memory.
 2. `read_file` target using `SRC:` and `LINES:` from results
 3. Use `PATH:` breadcrumb (e.g., `Tech Stack > Vercel`) for hierarchy context
 4. Answer with citations
+
+**💡 Pro tips for better search:**
+- **Narrow by source**: `search_memory("auth", source="Specifications")` — only searches within a specific knowledge source
+- **Keyword boost**: `search_memory("RLS policy", keywords="row_level_security")` — exact term matches rank higher
+- **Check what's indexed**: `memory_stats()` — shows per-source chunk counts so you know what's searchable
+- **Too few results?** Lower threshold: `search_memory("...", threshold=0.15)`
 
 ### Add lesson
 1. `search_memory(keywords)` — check for duplicates

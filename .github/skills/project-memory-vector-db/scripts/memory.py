@@ -11,12 +11,13 @@ import re
 from datetime import date
 from typing import Optional
 
-from retriever_lib import PROJECT_DIR
+from retriever_lib import PROJECT_DIR, REPO_ROOT
 
 MEMORY_PATH = os.path.join(PROJECT_DIR, "MEMORY.md")
 DOCS_DIR = os.path.join(PROJECT_DIR, "docs")
 WIKI_PATH = os.path.join(DOCS_DIR, "WIKI.md")
 LEARNING_PATH = os.path.join(DOCS_DIR, "LEARNING.md")
+KNOWLEDGE_SOURCES_PATH = os.path.join(PROJECT_DIR, "knowledge-sources.json")
 
 
 # ── MEMORY.md operations ──────────────────────────────────────────
@@ -310,26 +311,86 @@ def append_learning_entry(title: str, problem: str, root_cause: str, solution: s
 # ── Utility ──────────────────────────────────────────────────────
 
 def get_doc_list() -> list[dict]:
-    """List all documentation files with basic metadata."""
+    """List all documentation files from configured knowledge sources.
+
+    Reads knowledge-sources.json to discover files, falling back to
+    the legacy docs/ directory if the config doesn't exist.
+    """
+    import fnmatch
+    import json
+
     files = []
-    docs_dir = DOCS_DIR
-    if os.path.exists(docs_dir):
-        for f in sorted(os.listdir(docs_dir)):
-            path = os.path.join(docs_dir, f)
+
+    # Try loading from knowledge-sources.json
+    if os.path.exists(KNOWLEDGE_SOURCES_PATH):
+        try:
+            with open(KNOWLEDGE_SOURCES_PATH, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, KeyError):
+            config = {}
+
+        for source in config.get("sources", []):
+            source_path = source.get("path", "")
+            patterns = source.get("patterns", ["*.md"])
+            recursive = source.get("recursive", True)
+
+            abs_path = source_path if os.path.isabs(source_path) else os.path.join(REPO_ROOT, source_path)
+            if not os.path.exists(abs_path):
+                continue
+
+            label = source.get("label", source_path)
+
+            if os.path.isfile(abs_path):
+                if any(fnmatch.fnmatch(os.path.basename(abs_path), p) for p in patterns):
+                    files.append({
+                        "file": os.path.relpath(abs_path, REPO_ROOT).replace(os.sep, '/'),
+                        "size": os.path.getsize(abs_path),
+                        "modified": os.path.getmtime(abs_path),
+                        "source": label
+                    })
+                continue
+
+            if recursive:
+                for root, _dirs, filenames in os.walk(abs_path):
+                    for filename in sorted(filenames):
+                        if any(fnmatch.fnmatch(filename, p) for p in patterns):
+                            fpath = os.path.join(root, filename)
+                            files.append({
+                                "file": os.path.relpath(fpath, REPO_ROOT).replace(os.sep, '/'),
+                                "size": os.path.getsize(fpath),
+                                "modified": os.path.getmtime(fpath),
+                                "source": label
+                            })
+            else:
+                with os.scandir(abs_path) as it:
+                    for entry in sorted(it, key=lambda e: e.name):
+                        if entry.is_file() and any(fnmatch.fnmatch(entry.name, p) for p in patterns):
+                            files.append({
+                                "file": os.path.relpath(entry.path, REPO_ROOT).replace(os.sep, '/'),
+                                "size": os.path.getsize(entry.path),
+                                "modified": os.path.getmtime(entry.path),
+                                "source": label
+                            })
+        return files
+
+    # Fallback: legacy docs/ directory
+    if os.path.exists(DOCS_DIR):
+        for f in sorted(os.listdir(DOCS_DIR)):
+            path = os.path.join(DOCS_DIR, f)
             if f.endswith(".md") and os.path.isfile(path):
                 files.append({
                     "file": f"docs/{f}",
                     "size": os.path.getsize(path),
                     "modified": os.path.getmtime(path)
                 })
-    features_dir = os.path.join(docs_dir, "features")
-    if os.path.exists(features_dir):
-        for f in sorted(os.listdir(features_dir)):
-            path = os.path.join(features_dir, f)
-            if f.endswith(".md") and os.path.isfile(path):
-                files.append({
-                    "file": f"docs/features/{f}",
-                    "size": os.path.getsize(path),
-                    "modified": os.path.getmtime(path)
-                })
+        features_dir = os.path.join(DOCS_DIR, "features")
+        if os.path.exists(features_dir):
+            for f in sorted(os.listdir(features_dir)):
+                path = os.path.join(features_dir, f)
+                if f.endswith(".md") and os.path.isfile(path):
+                    files.append({
+                        "file": f"docs/features/{f}",
+                        "size": os.path.getsize(path),
+                        "modified": os.path.getmtime(path)
+                    })
     return files

@@ -1,7 +1,8 @@
 """
 Stop hook script for Project Memory Vector DB system.
 
-Scans docs/ for markdown files, splits into chunks using a recursive
+Scans configured knowledge sources (from knowledge-sources.json) for
+markdown and other supported files, splits into chunks using a recursive
 size-aware strategy (headings → paragraphs → sentences → hard split),
 generates embeddings via sentence-transformers, and stores in Chroma
 vector database. Tracks changes via manifest.json so only modified
@@ -10,6 +11,7 @@ files are re-indexed.
 Runs automatically at the end of every agent session.
 """
 
+import fnmatch
 import hashlib
 import json
 import os
@@ -30,6 +32,7 @@ DOCS_DIR = os.path.join(PROJECT_DIR, "docs")
 FEATURES_DIR = os.path.join(DOCS_DIR, "features")
 VECTOR_DB_DIR = os.path.join(PROJECT_DIR, "vector-db")
 MANIFEST_PATH = os.path.join(PROJECT_DIR, "manifest.json")
+KNOWLEDGE_SOURCES_PATH = os.path.join(PROJECT_DIR, "knowledge-sources.json")
 
 HEADING_RE = re.compile(r'^(#{2,3})\s+(.+)$')
 
@@ -182,24 +185,111 @@ def save_manifest(manifest: dict):
         json.dump(manifest, f, indent=2, ensure_ascii=False)
 
 
-def _find_md_files(dir_path: str) -> list[str]:
-    """Recursively find all .md files under a directory."""
-    files = []
-    if not os.path.exists(dir_path):
-        return files
-    for root, _dirs, filenames in os.walk(dir_path):
-        for f in filenames:
-            if f.endswith(".md"):
-                files.append(os.path.join(root, f))
-    return files
+def load_knowledge_sources() -> dict:
+    """Load knowledge-sources.json configuration.
+
+    Returns the parsed config dict, or a default config if the file
+    doesn't exist (backward-compatible fallback).
+    """
+    default = {
+        "version": 1,
+        "sources": [
+            {
+                "path": "project-memory-vector-db/docs",
+                "recursive": True,
+                "patterns": ["*.md"],
+                "label": "Core Knowledge",
+                "description": "WIKI.md, LEARNING.md, and feature documentation"
+            }
+        ],
+        "exclude_patterns": [
+            "**/node_modules/**",
+            "**/.git/**",
+            "**/__pycache__/**",
+            "**/vector-db/**",
+            "**/.next/**"
+        ]
+    }
+    if not os.path.exists(KNOWLEDGE_SOURCES_PATH):
+        return default
+
+    with open(KNOWLEDGE_SOURCES_PATH, "r", encoding="utf-8") as f:
+        try:
+            config = json.load(f)
+            # Ensure minimal structure
+            config.setdefault("sources", default["sources"])
+            config.setdefault("exclude_patterns", default["exclude_patterns"])
+            return config
+        except (json.JSONDecodeError, KeyError):
+            return default
+
+
+def find_source_files(sources: list[dict], exclude_patterns: list[str]) -> list[str]:
+    """Discover files matching source config patterns, excluding specified globs.
+
+    Each source entry supports:
+      - path:      Relative path from REPO_ROOT (or absolute)
+      - recursive: Whether to search subdirectories
+      - patterns:  List of glob patterns (e.g. ["*.md", "*.sql"])
+
+    Returns sorted list of absolute file paths.
+    """
+    discovered: set[str] = set()
+
+    for source in sources:
+        source_path = source.get("path", "")
+        recursive = source.get("recursive", True)
+        patterns = source.get("patterns", ["*.md"])
+
+        # Resolve relative to REPO_ROOT
+        abs_path = source_path if os.path.isabs(source_path) else os.path.join(REPO_ROOT, source_path)
+
+        if not os.path.exists(abs_path):
+            continue
+
+        if os.path.isfile(abs_path):
+            # Single file source
+            if any(fnmatch.fnmatch(os.path.basename(abs_path), p) for p in patterns):
+                if not _is_excluded(abs_path, exclude_patterns):
+                    discovered.add(abs_path)
+            continue
+
+        # Directory source
+        if recursive:
+            for root, dirs, filenames in os.walk(abs_path):
+                # Prune excluded directories during walk (performance)
+                dirs[:] = [d for d in dirs if not _is_excluded(
+                    os.path.join(root, d), exclude_patterns
+                )]
+                for f in filenames:
+                    filepath = os.path.join(root, f)
+                    if any(fnmatch.fnmatch(f, p) for p in patterns):
+                        if not _is_excluded(filepath, exclude_patterns):
+                            discovered.add(filepath)
+        else:
+            with os.scandir(abs_path) as it:
+                for entry in it:
+                    if entry.is_file():
+                        if any(fnmatch.fnmatch(entry.name, p) for p in patterns):
+                            filepath = entry.path
+                            if not _is_excluded(filepath, exclude_patterns):
+                                discovered.add(filepath)
+
+    return sorted(discovered)
+
+
+def _is_excluded(filepath: str, exclude_patterns: list[str]) -> bool:
+    """Check if a filepath matches any exclude pattern."""
+    for pattern in exclude_patterns:
+        if fnmatch.fnmatch(filepath.replace(os.sep, '/'), pattern):
+            return True
+    return False
 
 
 def find_markdown_files() -> list[str]:
-    """Find all markdown files in docs/ and docs/features/ (recursive)."""
-    files = []
-    files.extend(_find_md_files(DOCS_DIR))
-    files.extend(_find_md_files(FEATURES_DIR))
-    return sorted(set(files))
+    """Discover files from all configured knowledge sources."""
+    config = load_knowledge_sources()
+    return find_source_files(config.get("sources", []), config.get("exclude_patterns", []))
 
 
 def chunk_markdown(filepath: str) -> list[dict]:
@@ -380,10 +470,11 @@ def remove_file_from_index(file_key: str, collection):
 
 
 def run_incremental_index(collection=None) -> dict:
-    """Run incremental indexing of docs/ files.
+    """Run incremental indexing of all configured knowledge sources.
 
-    Scans all markdown files, compares hashes against manifest.json,
-    and only re-indexes changed/new files. Removes deleted files from index.
+    Reads knowledge-sources.json to discover files, compares hashes
+    against manifest.json, and only re-indexes changed/new files.
+    Removes deleted files from index.
 
     Args:
         collection: Optional Chroma collection to reuse.
@@ -396,7 +487,6 @@ def run_incremental_index(collection=None) -> dict:
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 
     os.makedirs(DOCS_DIR, exist_ok=True)
-    os.makedirs(FEATURES_DIR, exist_ok=True)
 
     manifest = load_manifest()
     previous_files = set(manifest.get("files", {}).keys())
@@ -455,10 +545,15 @@ def run_incremental_index(collection=None) -> dict:
 
 def main():
     """CLI entry point for indexer."""
+    config = load_knowledge_sources()
+    sources = config.get("sources", [])
+    labels = [s.get("label", s.get("path", "?")) for s in sources]
+    print(f"[indexer] Knowledge sources: {', '.join(labels)}")
+
     result = run_incremental_index()
     col = result["collection"]
 
-    print(f"[indexer] Found {result['total_files']} markdown files")
+    print(f"[indexer] Found {result['total_files']} files across {len(sources)} source(s)")
     print(f"[indexer] Done: {result['indexed']} indexed, {result['skipped']} skipped, "
           f"{result['removed']} removed, {result['total_chunks']} total chunks")
     if col:

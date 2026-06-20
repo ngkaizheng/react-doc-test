@@ -10,9 +10,13 @@ Built for **VS Code Copilot** with MCP (Model Context Protocol) native tool inte
 graph TD
     subgraph "📝 Source Files"
         MEM[MEMORY.md<br/>Working Memory]
-        WIKI[WIKI.md<br/>Architecture & Decisions]
-        LEARN[LEARNING.md<br/>Lessons Learned]
-        FEAT[docs/features/*.md<br/>Feature Docs]
+        CFG[knowledge-sources.json<br/>Source Configuration]
+        subgraph "📚 Dynamic Sources"
+            WIKI[WIKI.md & LEARNING.md]
+            FEAT[features/*.md]
+            SPEC[specs/ & contracts/]
+            OTHER[... any repo path ...]
+        end
     end
 
     subgraph "⚙️ Indexing (Stop Hook)"
@@ -32,9 +36,11 @@ graph TD
     end
 
     MEM --> AGENT
+    CFG --> IDX
     WIKI --> IDX
-    LEARN --> IDX
     FEAT --> IDX
+    SPEC --> IDX
+    OTHER --> IDX
     IDX --> MAN
     IDX --> CHROMA
     CHROMA --> MCP
@@ -42,7 +48,7 @@ graph TD
     CHROMA --> FAST
     MCP --> AGENT
     CLI --> AGENT
-    AGENT -->|add_learning| LEARN
+    AGENT -->|add_learning| WIKI
     AGENT -->|add_wiki_entry| WIKI
     AGENT -->|update_working_memory| MEM
 ```
@@ -51,10 +57,68 @@ graph TD
 
 | Phase | Component | Description |
 |-------|-----------|-------------|
-| **Index** | `indexer.py` | Scans docs/ → recursive size-aware chunking → embeds via `BAAI/bge-m3` → stores in Chroma |
+| **Index** | `indexer.py` | Scans configured knowledge sources → recursive size-aware chunking → embeds via `BAAI/bge-m3` → stores in Chroma |
 | **Retrieve** | MCP tools / CLI | Semantic search returns relevant chunks with file paths and line numbers |
 | **Write** | MCP tools | Granular tools to update MEMORY.md, WIKI.md, LEARNING.md without overwriting |
 | **Sync** | `refresh_index()` | Rebuilds Chroma index after documentation changes |
+
+## Dynamic Knowledge Sources
+
+Instead of hardcoding which directories to index, the system reads a **`knowledge-sources.json`** configuration file that defines where to find documentation files across the entire repository.
+
+### Configuration format
+
+```json
+{
+  "version": 1,
+  "sources": [
+    {
+      "path": "project-memory-vector-db/docs",
+      "recursive": true,
+      "patterns": ["*.md"],
+      "label": "Project Documentation",
+      "description": "WIKI.md, LEARNING.md, and other project docs"
+    },
+    {
+      "path": "specs",
+      "recursive": true,
+      "patterns": ["*.md"],
+      "label": "Specifications",
+      "description": "Feature specs, plans, research, and tasks"
+    }
+  ],
+  "exclude_patterns": [
+    "**/node_modules/**",
+    "**/.git/**",
+    "**/__pycache__/**",
+    "**/vector-db/**",
+    "**/.next/**"
+  ]
+}
+```
+
+Each source entry supports:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `path` | string | Relative path from repo root (or absolute path). Can point to a directory **or** a single file. |
+| `recursive` | bool | If `true`, walks subdirectories. If `false`, only scans the top level. |
+| `patterns` | string[] | Glob patterns to match filenames (e.g., `["*.md"]`, `["*.ts", "*.tsx"]`, `["seed.sql"]`). |
+| `label` | string | Human-readable name shown in agent context and startup messages. |
+| `description` | string | Brief description of what this source contains. |
+
+### Adding a new source
+
+Just edit `project-memory-vector-db/knowledge-sources.json` and add a new entry, then run `refresh_index()`. No code changes needed.
+
+```bash
+# After editing knowledge-sources.json:
+python .github/skills/project-memory-vector-db/scripts/indexer.py
+```
+
+### Excluding files
+
+The `exclude_patterns` array supports glob patterns for paths to always skip. Useful for build artifacts, generated code, and dependency directories.
 
 ## Installation
 
@@ -78,26 +142,31 @@ python .github/skills/project-memory-vector-db/scripts/init.py
 This creates:
 ```
 project-memory-vector-db/
-├── MEMORY.md              ← Working memory (edit this)
+├── MEMORY.md                ← Working memory (edit this)
+├── knowledge-sources.json   ← Dynamic source configuration ✨
 ├── docs/
-│   ├── WIKI.md            ← Architecture & decisions
-│   ├── LEARNING.md        ← Lessons learned
-│   └── features/          ← Feature docs (add .md files here)
-├── manifest.json          ← Change tracking (auto-generated)
-└── vector-db/             ← Chroma storage (auto-managed, gitignore)
+│   ├── WIKI.md              ← Architecture & decisions
+│   ├── LEARNING.md          ← Lessons learned
+│   └── features/            ← Feature docs (add .md files here)
+├── manifest.json            ← Change tracking (auto-generated)
+└── vector-db/               ← Chroma storage (auto-managed, gitignore)
 ```
 
 ### 3. Merge agent rules
 
 Copy the contents of `project-memory-vector-db/docs/AGENTS.md` into your root `AGENTS.md` or `.github/copilot-instructions.md`.
 
-### 4. Build the vector index
+### 4. (Optional) Configure knowledge sources
+
+Edit `project-memory-vector-db/knowledge-sources.json` to add or remove source paths. See [Dynamic Knowledge Sources](#dynamic-knowledge-sources) for the format.
+
+### 5. Build the vector index
 
 ```bash
 python .github/skills/project-memory-vector-db/scripts/indexer.py
 ```
 
-The indexer reads all markdown files in `docs/`, applies recursive size-aware chunking (headings → paragraphs → sentences → hard split, 768 tokens max, ~128 token overlap), generates embeddings via `BAAI/bge-m3`, and stores them in Chroma.
+The indexer reads all files from the configured knowledge sources (declared in `knowledge-sources.json`), applies recursive size-aware chunking (headings → paragraphs → sentences → hard split, 768 tokens max, ~128 token overlap), generates embeddings via `BAAI/bge-m3`, and stores them in Chroma.
 
 ### 5. Restart VS Code
 
@@ -146,6 +215,7 @@ The MCP server is a **long-running process** managed by VS Code. It loads all Py
 | **Code changes** — editing `memory.py`, `mcp-server.py`, `retriever_lib.py`, or any `.py` file under `scripts/` | The server imported the old bytecode; edits won't take effect until the process restarts | Reload Window (`Ctrl+Shift+P` → `Developer: Reload Window`) |
 | **WIKI.md/LEARNING.md edits made outside MCP tools** — manually editing `docs/` files with an external editor or direct `replace_string_in_file` | The MCP server reads/writes files via the filesystem, so manual edits are visible immediately. **No restart needed.** | Just run `refresh_index()` to sync the vector index |
 | **New feature docs added** — creating `docs/features/*.md` files manually | No restart needed — only the vector index needs rebuilding | Run `refresh_index()` |
+| **knowledge-sources.json edited** — adding, removing, or changing source paths/patterns | No restart needed — the indexer reads the config dynamically | Run `refresh_index()` |
 | **Chroma DB corrupted or out of sync** | The index is stale; fresh embedding is needed | Run `refresh_index()` |
 
 ### How to restart

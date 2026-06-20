@@ -1,7 +1,8 @@
 ---
 name: project-memory-vector-db
 description: >-
-  Manages project long-term memory with semantic vector search over WIKI.md, LEARNING.md, and feature docs,
+  Manages project long-term memory with dynamic, configurable knowledge sources
+  (knowledge-sources.json) and semantic vector search across any repo path,
   plus working memory via MEMORY.md.
   Provides MCP tools (search_memory, get_memory, update_working_memory, add_learning, add_wiki_entry,
   update_wiki_entry, expand_wiki_entry, remove_wiki_entry, refresh_index, index_status) for knowledge
@@ -58,19 +59,19 @@ Semantic retrieval + working memory.
 - `update_working_memory(current_task="...", next_steps="...", blocked="...")`
 - Sections: `## [CT]`, `## [NS]`, `## [BL]`, `## [CM]`
 
-### After editing docs
-1. `refresh_index()` — rebuild Chroma vector index
+### After editing docs or knowledge sources
+1. `refresh_index()` — rebuild Chroma vector index (reads `knowledge-sources.json` dynamically)
 2. `index_status()` — verify index health
 
 ## Heading Level Standards
 
-Both `##` and `###` are chunk boundaries in the vector index:
+Both `##` and `###` are chunk boundaries in the vector index (applies to all indexed .md files):
 
-| File | `##` = | `###` = |
-|------|--------|---------|
-| **WIKI.md** | Major domain | Sub-topic or decision entry |
+| File type | `##` = | `###` = |
+|-----------|--------|---------|
+| **WIKI.md / general docs** | Major domain | Sub-topic or decision entry |
 | **LEARNING.md** | Distinct lesson | Update to existing lesson |
-| **features/*.md** | Major component | Sub-component or edge case |
+| **features/*.md / specs** | Major component | Sub-component or edge case |
 
 ## See Also
 

@@ -167,6 +167,49 @@ def create_gitignore() -> bool:
     return True
 
 
+KNOWLEDGE_SOURCES_TEMPLATE = {
+    "version": 1,
+    "sources": [
+        {
+            "path": "project-memory-vector-db/docs",
+            "recursive": True,
+            "patterns": ["*.md"],
+            "label": "Core Knowledge",
+            "description": "WIKI.md, LEARNING.md, and feature documentation"
+        }
+    ],
+    "exclude_patterns": [
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/__pycache__/**",
+        "**/vector-db/**",
+        "**/.next/**"
+    ],
+    "_instructions": {
+        "description": "Configuration file for the Project Memory Vector DB system. Add/edit source entries to control which files get indexed into the vector database.",
+        "sources_path": "Relative path from repo root (or absolute path). Directories and single files are both supported.",
+        "sources_recursive": "If true, walks subdirectories. If false, only scans the top-level directory.",
+        "sources_patterns": "Glob patterns to match filenames (e.g. ['*.md'], ['*.ts', '*.tsx']).",
+        "sources_label": "Human-readable label for this source, shown in agent context.",
+        "sources_description": "Brief description of what this source contains.",
+        "exclude_patterns": "Glob patterns for paths to always skip (e.g. node_modules, build output)."
+    }
+}
+
+
+def create_knowledge_sources() -> bool:
+    """Create default knowledge-sources.json if it doesn't exist."""
+    config_path = os.path.join(PROJECT_DIR, "knowledge-sources.json")
+    if os.path.exists(config_path):
+        print(f"  ⏩ knowledge-sources.json — already exists")
+        return False
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(KNOWLEDGE_SOURCES_TEMPLATE, f, indent=2, ensure_ascii=False)
+    print(f"  ✅ knowledge-sources.json — created with default sources")
+    return True
+
+
 def main():
     print("🚀 Initializing Project Memory Vector DB System...\n")
 
@@ -188,6 +231,9 @@ def main():
 
     print("\n📋 Manifest:")
     manifest_created = create_manifest()
+
+    print("\n📋 Knowledge Sources:")
+    sources_created = create_knowledge_sources()
 
     print("\n🔗 Hook configuration:")
     hook_created = create_hook_config()
